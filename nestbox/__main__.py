@@ -5,6 +5,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import BotCommand
 
 from nestbox.bot.deps import Deps
 from nestbox.bot.handlers import build_router
@@ -20,6 +21,20 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+
+
+COMMANDS = [
+    BotCommand(command="topic", description="new branch with its own agent"),
+    BotCommand(command="rename", description="rename the branch"),
+    BotCommand(command="close", description="close the branch"),
+    BotCommand(command="agent", description="switch the branch agent"),
+    BotCommand(command="agents", description="list agents"),
+    BotCommand(command="new", description="start the session over"),
+    BotCommand(command="btw", description="side question on a fork"),
+    BotCommand(command="usage", description="remaining limits"),
+    BotCommand(command="sessions", description="active branches"),
+    BotCommand(command="stop", description="cancel the task"),
+]
 
 
 async def main() -> None:
@@ -46,6 +61,7 @@ async def main() -> None:
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))
     dispatcher.include_router(build_router())
 
+    await bot.set_my_commands(COMMANDS)
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
 

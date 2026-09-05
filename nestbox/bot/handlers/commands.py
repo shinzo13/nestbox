@@ -14,7 +14,12 @@ from nestbox.core.sessions import SessionStore
 
 router = Router(name="commands")
 
+TOPIC_NAME_LIMIT = 128
+
 HELP = """commands:
+/topic <agent> [title] - a new topic branch with its own agent
+/rename <title> - rename the current branch
+/close - close the branch together with its topic
 /agent <name> - switch the agent in this branch
 /agents - list agents
 /new - start the session over
@@ -76,6 +81,59 @@ async def cmd_new(message: Message, deps: Deps) -> None:
     await message.answer(escape_md(f"new session, agent {agent}"), parse_mode="MarkdownV2")
 
 
+@router.message(Command("topic"))
+async def cmd_topic(message: Message, command: CommandObject, deps: Deps) -> None:
+    parts = (command.args or "").split(maxsplit=1)
+    name = parts[0] if parts else ""
+    try:
+        spec = deps.registry.get(name or None)
+    except KeyError:
+        await message.answer(f"no such agent: {name}")
+        return
+    title = parts[1].strip() if len(parts) > 1 else spec.name
+    topic = await message.bot.create_forum_topic(chat_id=message.chat.id, name=title[:TOPIC_NAME_LIMIT])
+    key = SessionStore.key(message.chat.id, topic.message_thread_id)
+    await deps.sessions.set(key, "", spec.name, title=title)
+    await message.bot.send_message(
+        chat_id=message.chat.id,
+        message_thread_id=topic.message_thread_id,
+        text=escape_md(f"agent {spec.name} · {spec.cwd or '~'}"),
+        parse_mode="MarkdownV2",
+    )
+
+
+@router.message(Command("rename"))
+async def cmd_rename(message: Message, command: CommandObject, deps: Deps) -> None:
+    title = (command.args or "").strip()
+    if not title:
+        await message.answer("give a title: /rename web deploy")
+        return
+    if message.message_thread_id is None:
+        await message.answer("this is the general branch, nothing to rename")
+        return
+    await message.bot.edit_forum_topic(
+        chat_id=message.chat.id,
+        message_thread_id=message.message_thread_id,
+        name=title[:TOPIC_NAME_LIMIT],
+    )
+    key = SessionStore.key(message.chat.id, message.message_thread_id)
+    record = await deps.sessions.get(key)
+    if record:
+        await deps.sessions.set(key, record.session_id, record.agent, title=title)
+
+
+@router.message(Command("close"))
+async def cmd_close(message: Message, deps: Deps) -> None:
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        await message.answer("the general branch cannot be closed")
+        return
+    key = SessionStore.key(message.chat.id, thread_id)
+    deps.runner.cancel(key)
+    await deps.sessions.drop(key)
+    await message.bot.delete_forum_topic(chat_id=message.chat.id, message_thread_id=thread_id)
+
+
 @router.message(Command("stop"))
 async def cmd_stop(message: Message, deps: Deps) -> None:
     key = SessionStore.key(message.chat.id, message.message_thread_id)
@@ -95,7 +153,8 @@ async def cmd_sessions(message: Message, deps: Deps) -> None:
     for key, record in sorted(records.items(), key=lambda item: -item[1].updated_at):
         when = datetime.fromtimestamp(record.updated_at, UTC).strftime("%d.%m %H:%M")
         short = record.session_id[-6:] if record.session_id else "new"
-        lines.append(f"{key} · {record.agent} · {short} · {when}")
+        title = record.title or key
+        lines.append(f"{title} · {record.agent} · {short} · {when}")
     await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
 
 
