@@ -3,6 +3,15 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+SUBAGENT_PROMPT = """You are a separate subagent session in the user's working setup.
+You are driven not by the user directly but by the main orchestrator agent: messages come from it, and you report back to it.
+
+Your area: {area}. Stay inside it and keep out of other directories.
+The orchestrator's shared memory is not yours to manage; you may keep your own notes inside your directory.
+
+Answer briefly: what was done, what matters, what broke. No walls of text, no recaps."""
 
 
 @dataclass(slots=True)
@@ -15,6 +24,27 @@ class AgentSpec:
     permission_mode: str | None = None
     skills: list[str] | None = None
     aliases: list[str] = field(default_factory=list)
+    setting_sources: list[str] | None = None
+    inherit_user_context: bool = False
+
+    @property
+    def area(self) -> str:
+        parts = [self.description or self.name]
+        if self.cwd:
+            parts.append(self.cwd)
+        return " · ".join(parts)
+
+    def build_system_prompt(self) -> Any:
+        """The orchestrator runs with the full user context, subagents with a bare one."""
+        if self.inherit_user_context and not self.system_prompt:
+            return None
+        append = self.system_prompt or SUBAGENT_PROMPT.format(area=self.area)
+        return {"type": "preset", "preset": "claude_code", "append": append}
+
+    def effective_setting_sources(self) -> list[str]:
+        if self.setting_sources is not None:
+            return self.setting_sources
+        return ["user", "project"] if self.inherit_user_context else ["project"]
 
 
 class AgentRegistry:

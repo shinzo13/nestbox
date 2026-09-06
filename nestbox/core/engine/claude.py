@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 
 from claude_agent_sdk import (
     AssistantMessage,
+    ClaudeSDKClient,
     ClaudeAgentOptions,
     RateLimitEvent,
     ResultMessage,
@@ -42,6 +43,42 @@ def _summarize_tool_input(payload: dict) -> str:
     return ""
 
 
+class ClaudeLiveSession:
+    """Keeps the agent process up between messages (/wake)."""
+
+    def __init__(self, engine: "ClaudeEngine", request: RunRequest) -> None:
+        self._engine = engine
+        self._request = request
+        self._client: ClaudeSDKClient | None = None
+        self.session_id = request.session_id
+
+    async def open(self) -> None:
+        options = self._engine._build_options(self._request)
+        client = ClaudeSDKClient(options=options)
+        await client.connect()
+        self._client = client
+
+    async def send(self, prompt: str) -> AsyncIterator[Event]:
+        if self._client is None:
+            raise RuntimeError("live session is not open")
+        await self._client.query(prompt)
+        async for message in self._client.receive_response():
+            for event in self._engine._translate(message):
+                if isinstance(event, SessionStarted):
+                    self.session_id = event.session_id
+                yield event
+
+    async def interrupt(self) -> None:
+        if self._client is not None:
+            await self._client.interrupt()
+
+    async def close(self) -> None:
+        if self._client is None:
+            return
+        client, self._client = self._client, None
+        await client.disconnect()
+
+
 class ClaudeEngine(Engine):
     name = "claude"
     capabilities = frozenset(
@@ -50,6 +87,7 @@ class ClaudeEngine(Engine):
             Capability.RESUME,
             Capability.USAGE,
             Capability.INTERRUPT,
+            Capability.LIVE,
         }
     )
 
@@ -65,7 +103,7 @@ class ClaudeEngine(Engine):
             model=request.model,
             permission_mode=request.permission_mode or "bypassPermissions",
             skills=request.skills if request.skills is not None else "all",
-            setting_sources=self._setting_sources,
+            setting_sources=request.setting_sources or self._setting_sources,
             include_partial_messages=False,
             **request.extra,
         )
@@ -129,6 +167,9 @@ class ClaudeEngine(Engine):
                 )
             )
         return events
+
+    def live(self, request: RunRequest) -> ClaudeLiveSession:
+        return ClaudeLiveSession(self, request)
 
     async def fork(self, session_id: str, cwd: str | None = None) -> str:
         result = await asyncio.to_thread(sdk_fork_session, session_id, cwd)

@@ -8,6 +8,7 @@ from typing import Any, ClassVar, Protocol
 
 class Capability(StrEnum):
     FORK = "fork"
+    LIVE = "live"
     RESUME = "resume"
     USAGE = "usage"
     BACKGROUND = "background"
@@ -20,10 +21,11 @@ class RunRequest:
     cwd: str | None = None
     session_id: str | None = None
     fork: bool = False
-    system_prompt: str | None = None
+    system_prompt: Any = None
     model: str | None = None
     permission_mode: str | None = None
     skills: list[str] | None = None
+    setting_sources: list[str] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -89,6 +91,20 @@ class Failed(Event):
     kind: ClassVar[str] = "failed"
 
 
+class LiveSession(Protocol):
+    """A live session: the agent process stays up between messages."""
+
+    session_id: str | None
+
+    async def open(self) -> None: ...
+
+    def send(self, prompt: str) -> AsyncIterator[Event]: ...
+
+    async def interrupt(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
 class Engine(Protocol):
     name: str
     capabilities: frozenset[Capability]
@@ -96,3 +112,5 @@ class Engine(Protocol):
     def run(self, request: RunRequest) -> AsyncIterator[Event]: ...
 
     async def fork(self, session_id: str, cwd: str | None = None) -> str: ...
+
+    def live(self, request: RunRequest) -> LiveSession: ...

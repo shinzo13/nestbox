@@ -30,6 +30,8 @@ COMMANDS = [
     BotCommand(command="agent", description="switch the branch agent"),
     BotCommand(command="agents", description="list agents"),
     BotCommand(command="new", description="start the session over"),
+    BotCommand(command="wake", description="keep the agent awake"),
+    BotCommand(command="sleep", description="put the agent to sleep"),
     BotCommand(command="btw", description="side question on a fork"),
     BotCommand(command="usage", description="remaining limits"),
     BotCommand(command="sessions", description="active branches"),
@@ -61,6 +63,7 @@ async def main() -> None:
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))
     dispatcher.include_router(build_router())
 
+    runner.start_janitor()
     await bot.set_my_commands(COMMANDS)
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())

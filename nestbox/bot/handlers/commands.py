@@ -23,6 +23,8 @@ HELP = """commands:
 /agent <name> - switch the agent in this branch
 /agents - list agents
 /new - start the session over
+/wake - keep the agent up between messages
+/sleep - put it to sleep, the session is kept
 /btw <question> - side question on a fork, the branch stays untouched
 /usage - remaining limits
 /sessions - active branches
@@ -134,6 +136,37 @@ async def cmd_close(message: Message, deps: Deps) -> None:
     await message.bot.delete_forum_topic(chat_id=message.chat.id, message_thread_id=thread_id)
 
 
+@router.message(Command("wake"))
+async def cmd_wake(message: Message, deps: Deps) -> None:
+    key = SessionStore.key(message.chat.id, message.message_thread_id)
+    if Capability.LIVE not in deps.capabilities:
+        await message.answer("the engine has no live sessions")
+        return
+    record = await deps.sessions.get(key)
+    spec = deps.registry.get(record.agent if record else None)
+    if deps.runner.is_awake(key):
+        await message.answer(escape_md(f"{spec.name} is already awake"), parse_mode="MarkdownV2")
+        return
+    try:
+        await deps.runner.wake(spec, key, record.session_id if record else None)
+    except Exception as exc:
+        await message.answer(escape_md(f"failed to wake: {exc}"), parse_mode="MarkdownV2")
+        return
+    await message.answer(
+        escape_md(f"🟢 {spec.name} is up, sleeps after 30m idle"),
+        parse_mode="MarkdownV2",
+    )
+
+
+@router.message(Command("sleep"))
+async def cmd_sleep(message: Message, deps: Deps) -> None:
+    key = SessionStore.key(message.chat.id, message.message_thread_id)
+    if await deps.runner.sleep(key):
+        await message.answer("💤 asleep, session kept")
+    else:
+        await message.answer("it was not awake")
+
+
 @router.message(Command("stop"))
 async def cmd_stop(message: Message, deps: Deps) -> None:
     key = SessionStore.key(message.chat.id, message.message_thread_id)
@@ -149,12 +182,14 @@ async def cmd_sessions(message: Message, deps: Deps) -> None:
     if not records:
         await message.answer("no sessions")
         return
+    awake = deps.runner.awake_keys()
     lines = []
     for key, record in sorted(records.items(), key=lambda item: -item[1].updated_at):
         when = datetime.fromtimestamp(record.updated_at, UTC).strftime("%d.%m %H:%M")
         short = record.session_id[-6:] if record.session_id else "new"
         title = record.title or key
-        lines.append(f"{title} · {record.agent} · {short} · {when}")
+        mark = "🟢" if key in awake else "💤"
+        lines.append(f"{mark} {title} · {record.agent} · {short} · {when}")
     await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
 
 

@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 from nestbox.bot.formatting import escape_md, human_duration, split_message
 from nestbox.core.engine.base import (
     Engine,
+    LiveSession,
     Failed,
     Finished,
     RateLimitWarning,
@@ -23,6 +24,8 @@ from nestbox.core.sessions import SessionStore
 
 PROGRESS_INTERVAL = 3.0
 MAX_PROGRESS_LINES = 6
+IDLE_SLEEP_AFTER = 1800.0
+JANITOR_INTERVAL = 60.0
 
 
 @dataclass(slots=True)
@@ -95,22 +98,87 @@ class ProgressReporter:
             pass
 
 
+@dataclass(slots=True)
+class LiveHandle:
+    session: LiveSession
+    agent: str
+    touched_at: float
+
+
 class AgentRunner:
     def __init__(self, engine: Engine, store: SessionStore) -> None:
         self._engine = engine
         self._store = store
         self._active: dict[str, asyncio.Task] = {}
+        self._live: dict[str, LiveHandle] = {}
+        self._janitor: asyncio.Task | None = None
 
     def is_busy(self, key: str) -> bool:
         task = self._active.get(key)
         return task is not None and not task.done()
 
+    def is_awake(self, key: str) -> bool:
+        return key in self._live
+
+    def awake_keys(self) -> set[str]:
+        return set(self._live)
+
     def cancel(self, key: str) -> bool:
+        handle = self._live.get(key)
         task = self._active.get(key)
-        if task and not task.done():
+        busy = task is not None and not task.done()
+        if handle is not None and busy:
+            asyncio.create_task(handle.session.interrupt())
+            return True
+        if busy:
             task.cancel()
             return True
         return False
+
+    async def wake(self, spec: AgentSpec, key: str, resume_session: str | None) -> None:
+        await self.sleep(key)
+        session = self._engine.live(self._build_request("", spec, resume_session))
+        await session.open()
+        self._live[key] = LiveHandle(session=session, agent=spec.name, touched_at=time.monotonic())
+
+    async def sleep(self, key: str) -> bool:
+        handle = self._live.pop(key, None)
+        if handle is None:
+            return False
+        await handle.session.close()
+        return True
+
+    def start_janitor(self) -> None:
+        if self._janitor is None or self._janitor.done():
+            self._janitor = asyncio.create_task(self._janitor_loop())
+
+    async def _janitor_loop(self) -> None:
+        while True:
+            await asyncio.sleep(JANITOR_INTERVAL)
+            now = time.monotonic()
+            stale = [
+                key
+                for key, handle in self._live.items()
+                if now - handle.touched_at > IDLE_SLEEP_AFTER and not self.is_busy(key)
+            ]
+            for key in stale:
+                await self.sleep(key)
+
+    @staticmethod
+    def _build_request(
+        prompt: str, spec: AgentSpec, resume_session: str | None, fork: bool = False
+    ) -> RunRequest:
+        return RunRequest(
+            prompt=prompt,
+            cwd=spec.cwd,
+            session_id=resume_session,
+            fork=fork,
+            system_prompt=spec.build_system_prompt(),
+            model=spec.model,
+            permission_mode=spec.permission_mode,
+            skills=spec.skills,
+            setting_sources=spec.effective_setting_sources(),
+        )
 
     async def run(
         self,
@@ -128,16 +196,13 @@ class AgentRunner:
         reporter = ProgressReporter(bot, chat_id, thread_id)
         await reporter.start(spec.name)
 
-        request = RunRequest(
-            prompt=prompt,
-            cwd=spec.cwd,
-            session_id=resume_session,
-            fork=fork,
-            system_prompt=spec.system_prompt,
-            model=spec.model,
-            permission_mode=spec.permission_mode,
-            skills=spec.skills,
-        )
+        handle = None if fork else self._live.get(key)
+        if handle is not None and handle.agent == spec.name:
+            handle.touched_at = time.monotonic()
+            stream = handle.session.send(prompt)
+        else:
+            handle = None
+            stream = self._engine.run(self._build_request(prompt, spec, resume_session, fork))
 
         outcome = RunOutcome()
         texts: list[str] = []
@@ -146,7 +211,7 @@ class AgentRunner:
             self._active[key] = task
 
         try:
-            async for event in self._engine.run(request):
+            async for event in stream:
                 if isinstance(event, SessionStarted):
                     outcome.session_id = event.session_id
                     if persist:
@@ -175,6 +240,8 @@ class AgentRunner:
             raise
         finally:
             self._active.pop(key, None)
+            if handle is not None:
+                handle.touched_at = time.monotonic()
 
         outcome.text = self._pick_text(texts)
         summary = self._summary_line(spec.name, outcome)
@@ -201,8 +268,6 @@ class AgentRunner:
         duration = human_duration(outcome.duration_ms)
         if duration:
             parts.append(duration)
-        if outcome.cost_usd:
-            parts.append(f"${outcome.cost_usd:.2f}")
         if outcome.tools:
             parts.append(f"{len(outcome.tools)} tool calls")
         return " · ".join(parts)
