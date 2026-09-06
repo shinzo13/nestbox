@@ -26,6 +26,7 @@ class RunRequest:
     permission_mode: str | None = None
     skills: list[str] | None = None
     setting_sources: list[str] | None = None
+    disallowed_tools: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

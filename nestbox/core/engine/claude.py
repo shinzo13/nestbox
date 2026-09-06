@@ -104,6 +104,7 @@ class ClaudeEngine(Engine):
             permission_mode=request.permission_mode or "bypassPermissions",
             skills=request.skills if request.skills is not None else "all",
             setting_sources=request.setting_sources or self._setting_sources,
+            disallowed_tools=request.disallowed_tools,
             include_partial_messages=False,
             **request.extra,
         )

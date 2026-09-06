@@ -23,3 +23,19 @@ class OwnerOnlyMiddleware(BaseMiddleware):
                 return None
             return None
         return await handler(event, data)
+
+
+class BranchOnlyMiddleware(BaseMiddleware):
+    """Conversations live only in branches: in the general chat the bot points to main."""
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        deps = data.get("deps")
+        if isinstance(event, Message) and deps is not None and event.message_thread_id is None:
+            await deps.redirect_to_main(event)
+            return None
+        return await handler(event, data)

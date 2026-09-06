@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 MDV2_SPECIALS = r"_*[]()~`>#+-=|{}.!"
 TELEGRAM_LIMIT = 4096
 
@@ -38,3 +40,13 @@ def human_duration(ms: int | None) -> str:
         return f"{seconds:.0f}s"
     minutes, seconds = divmod(int(seconds), 60)
     return f"{minutes}m{seconds:02d}s"
+
+
+SEND_MARKER = re.compile(r"^\s*\[\[send:(.+?)\]\]\s*$", re.MULTILINE)
+
+
+def extract_attachments(text: str) -> tuple[str, list[str]]:
+    """The agent hands over files with a [[send:/path]] line; cut it out of the text."""
+    paths = [match.group(1).strip() for match in SEND_MARKER.finditer(text)]
+    cleaned = SEND_MARKER.sub("", text).strip()
+    return cleaned, paths

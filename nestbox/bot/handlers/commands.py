@@ -6,6 +6,7 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
+from nestbox.bot.attachments import send_attachments
 from nestbox.bot.deps import Deps
 from nestbox.bot.formatting import escape_md
 from nestbox.bot.runner import render_reply
@@ -16,13 +17,12 @@ router = Router(name="commands")
 
 TOPIC_NAME_LIMIT = 128
 
-HELP = """commands:
-/topic <agent> [title] - a new topic branch with its own agent
-/rename <title> - rename the current branch
-/close - close the branch together with its topic
-/agent <name> - switch the agent in this branch
-/agents - list agents
-/new - start the session over
+HELP = """branches are created by the orchestrator: ask it in main.
+
+commands:
+/branch - configure this branch: title, icon
+/agents - configured agents
+/new - start this branch's session over
 /wake - keep the agent up between messages
 /sleep - put it to sleep, the session is kept
 /btw <question> - side question on a fork, the branch stays untouched
@@ -56,84 +56,17 @@ async def cmd_agents(message: Message, deps: Deps) -> None:
     await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
 
 
-@router.message(Command("agent"))
-async def cmd_agent(message: Message, command: CommandObject, deps: Deps) -> None:
-    name = (command.args or "").strip()
-    if not name:
-        await message.answer("give a name: /agent web")
-        return
-    try:
-        spec = deps.registry.get(name)
-    except KeyError:
-        await message.answer(f"no such agent: {name}")
-        return
-    key = SessionStore.key(message.chat.id, message.message_thread_id)
-    await deps.sessions.drop(key)
-    await deps.sessions.set(key, "", spec.name)
-    await message.answer(escape_md(f"branch switched to {spec.name}, new session"), parse_mode="MarkdownV2")
-
-
 @router.message(Command("new"))
 async def cmd_new(message: Message, deps: Deps) -> None:
+    branch = await deps.branches.get(message.message_thread_id)
+    if branch is None:
+        await deps.redirect_to_main(message)
+        return
     key = SessionStore.key(message.chat.id, message.message_thread_id)
-    record = await deps.sessions.get(key)
-    agent = record.agent if record else deps.registry.default.name
+    await deps.runner.sleep(key)
     await deps.sessions.drop(key)
-    await deps.sessions.set(key, "", agent)
-    await message.answer(escape_md(f"new session, agent {agent}"), parse_mode="MarkdownV2")
-
-
-@router.message(Command("topic"))
-async def cmd_topic(message: Message, command: CommandObject, deps: Deps) -> None:
-    parts = (command.args or "").split(maxsplit=1)
-    name = parts[0] if parts else ""
-    try:
-        spec = deps.registry.get(name or None)
-    except KeyError:
-        await message.answer(f"no such agent: {name}")
-        return
-    title = parts[1].strip() if len(parts) > 1 else spec.name
-    topic = await message.bot.create_forum_topic(chat_id=message.chat.id, name=title[:TOPIC_NAME_LIMIT])
-    key = SessionStore.key(message.chat.id, topic.message_thread_id)
-    await deps.sessions.set(key, "", spec.name, title=title)
-    await message.bot.send_message(
-        chat_id=message.chat.id,
-        message_thread_id=topic.message_thread_id,
-        text=escape_md(f"agent {spec.name} · {spec.cwd or '~'}"),
-        parse_mode="MarkdownV2",
-    )
-
-
-@router.message(Command("rename"))
-async def cmd_rename(message: Message, command: CommandObject, deps: Deps) -> None:
-    title = (command.args or "").strip()
-    if not title:
-        await message.answer("give a title: /rename web deploy")
-        return
-    if message.message_thread_id is None:
-        await message.answer("this is the general branch, nothing to rename")
-        return
-    await message.bot.edit_forum_topic(
-        chat_id=message.chat.id,
-        message_thread_id=message.message_thread_id,
-        name=title[:TOPIC_NAME_LIMIT],
-    )
-    key = SessionStore.key(message.chat.id, message.message_thread_id)
-    record = await deps.sessions.get(key)
-    if record:
-        await deps.sessions.set(key, record.session_id, record.agent, title=title)
-
-
-@router.message(Command("close"))
-async def cmd_close(message: Message, deps: Deps) -> None:
-    thread_id = message.message_thread_id
-    if thread_id is None:
-        await message.answer("the general branch cannot be closed")
-        return
-    key = SessionStore.key(message.chat.id, thread_id)
-    deps.runner.cancel(key)
-    await deps.sessions.drop(key)
-    await message.bot.delete_forum_topic(chat_id=message.chat.id, message_thread_id=thread_id)
+    await deps.sessions.set(key, "", branch.agent)
+    await message.answer(escape_md(f"new session, agent {branch.agent}"), parse_mode="MarkdownV2")
 
 
 @router.message(Command("wake"))
@@ -142,8 +75,12 @@ async def cmd_wake(message: Message, deps: Deps) -> None:
     if Capability.LIVE not in deps.capabilities:
         await message.answer("the engine has no live sessions")
         return
+    branch = await deps.branches.get(message.message_thread_id)
+    if branch is None:
+        await deps.redirect_to_main(message)
+        return
     record = await deps.sessions.get(key)
-    spec = deps.registry.get(record.agent if record else None)
+    spec = deps.registry.for_branch(branch)
     if deps.runner.is_awake(key):
         await message.answer(escape_md(f"{spec.name} is already awake"), parse_mode="MarkdownV2")
         return
@@ -217,14 +154,18 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
         await message.answer("and the question?")
         return
     key = SessionStore.key(message.chat.id, message.message_thread_id)
+    branch = await deps.branches.get(message.message_thread_id)
     record = await deps.sessions.get(key)
+    if branch is None:
+        await deps.redirect_to_main(message)
+        return
     if not record or not record.session_id:
         await message.answer("no session in this branch yet, nothing to fork")
         return
     if Capability.FORK not in deps.capabilities:
         await message.answer("the engine cannot fork")
         return
-    spec = deps.registry.get(record.agent)
+    spec = deps.registry.for_branch(branch)
     outcome = await deps.runner.run(
         bot=message.bot,
         chat_id=message.chat.id,
@@ -235,5 +176,8 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
         fork=True,
         persist=False,
     )
-    for chunk in render_reply(outcome):
+    chunks, attachments = render_reply(outcome)
+    for chunk in chunks:
         await message.answer(chunk, parse_mode="MarkdownV2")
+    if attachments:
+        await send_attachments(message, attachments)

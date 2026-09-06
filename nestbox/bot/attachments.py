@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from aiogram.types import Message
+
+PHOTO_SUFFIX = ".jpg"
+
+
+def _candidates(message: Message) -> list[tuple[str, str | None]]:
+    """file_id and a name hint, for every kind of attachment a person sends."""
+    if message.photo:
+        return [(message.photo[-1].file_id, None)]
+    for attachment, name in (
+        (message.document, getattr(message.document, "file_name", None)),
+        (message.audio, getattr(message.audio, "file_name", None)),
+        (message.video, getattr(message.video, "file_name", None)),
+        (message.voice, None),
+        (message.video_note, None),
+        (message.animation, getattr(message.animation, "file_name", None)),
+        (message.sticker, None),
+    ):
+        if attachment is not None:
+            return [(attachment.file_id, name)]
+    return []
+
+
+async def save_incoming(message: Message, inbox: Path) -> list[Path]:
+    saved: list[Path] = []
+    for file_id, name in _candidates(message):
+        info = await message.bot.get_file(file_id)
+        suffix = Path(name or info.file_path or PHOTO_SUFFIX).suffix or PHOTO_SUFFIX
+        target = inbox / f"{file_id[-16:]}{suffix}"
+        inbox.mkdir(parents=True, exist_ok=True)
+        await message.bot.download_file(info.file_path, destination=target)
+        saved.append(target)
+    return saved
+
+
+async def send_attachments(message: Message, paths: list[str]) -> list[str]:
+    """Returns the paths that could not be sent."""
+    from aiogram.types import FSInputFile
+
+    failed: list[str] = []
+    for raw in paths:
+        path = Path(raw)
+        if not path.is_file():
+            failed.append(raw)
+            continue
+        document = FSInputFile(path)
+        if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+            await message.answer_photo(document)
+        else:
+            await message.answer_document(document)
+    return failed

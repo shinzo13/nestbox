@@ -1,10 +1,11 @@
 from aiogram import Router
 
-from nestbox.bot.handlers import chat, commands
+from nestbox.bot.handlers import branch, chat, commands
 
 
 def build_router() -> Router:
     router = Router(name="root")
     router.include_router(commands.router)
+    router.include_router(branch.router)
     router.include_router(chat.router)
     return router

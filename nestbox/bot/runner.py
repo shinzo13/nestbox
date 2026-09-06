@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 
-from nestbox.bot.formatting import escape_md, human_duration, split_message
+from nestbox.bot.formatting import (
+    escape_md,
+    extract_attachments,
+    human_duration,
+    split_message,
+)
 from nestbox.core.engine.base import (
     Engine,
     LiveSession,
@@ -178,6 +183,7 @@ class AgentRunner:
             permission_mode=spec.permission_mode,
             skills=spec.skills,
             setting_sources=spec.effective_setting_sources(),
+            disallowed_tools=spec.disallowed_tools,
         )
 
     async def run(
@@ -273,9 +279,12 @@ class AgentRunner:
         return " · ".join(parts)
 
 
-def render_reply(outcome: RunOutcome) -> list[str]:
+def render_reply(outcome: RunOutcome) -> tuple[list[str], list[str]]:
     if outcome.error:
-        return split_message(escape_md(f"⚠️ {outcome.error}"))
+        return split_message(escape_md(f"⚠️ {outcome.error}")), []
     if not outcome.text:
-        return split_message(escape_md("(empty answer)"))
-    return [escape_md(chunk) for chunk in split_message(outcome.text)]
+        return split_message(escape_md("(empty answer)")), []
+    text, attachments = extract_attachments(outcome.text)
+    if not text:
+        text = "done"
+    return [escape_md(chunk) for chunk in split_message(text)], attachments
