@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Take the main branch from the bot into an interactive terminal and hand it back on exit.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOCK="$ROOT/data/main.lock"
+RELEASED="$ROOT/data/main.released"
+
+session_id=$(python3 - "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+branches = json.loads((root / "data/branches.json").read_text(encoding="utf-8") or "{}")
+sessions = json.loads((root / "data/sessions.json").read_text(encoding="utf-8") or "{}")
+main = next((b for b in branches.values() if b.get("is_main")), None)
+if main is None:
+    raise SystemExit("no main branch")
+suffix = f":{main['thread_id']}"
+record = next((v for k, v in sessions.items() if k.endswith(suffix)), None)
+print((record or {}).get("session_id", ""))
+PY
+)
+
+touch "$LOCK"
+trap 'rm -f "$LOCK" "$RELEASED"' EXIT
+
+echo "waiting for the bot to release main..."
+for _ in $(seq 1 24); do
+    [ -f "$RELEASED" ] && break
+    sleep 1
+done
+[ -f "$RELEASED" ] || { echo "the bot did not release main (busy?), giving up"; exit 1; }
+
+cd "${NESTBOX_MAIN_CWD:-$HOME}"
+if [ -n "$session_id" ]; then
+    claude --resume "$session_id"
+else
+    echo "no session yet, starting a new one"
+    claude
+fi

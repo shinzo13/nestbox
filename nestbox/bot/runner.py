@@ -108,6 +108,7 @@ class LiveHandle:
     session: LiveSession
     agent: str
     touched_at: float
+    pinned: bool = False
 
 
 class AgentRunner:
@@ -140,11 +141,15 @@ class AgentRunner:
             return True
         return False
 
-    async def wake(self, spec: AgentSpec, key: str, resume_session: str | None) -> None:
+    async def wake(
+        self, spec: AgentSpec, key: str, resume_session: str | None, pinned: bool = False
+    ) -> None:
         await self.sleep(key)
         session = self._engine.live(self._build_request("", spec, resume_session))
         await session.open()
-        self._live[key] = LiveHandle(session=session, agent=spec.name, touched_at=time.monotonic())
+        self._live[key] = LiveHandle(
+            session=session, agent=spec.name, touched_at=time.monotonic(), pinned=pinned
+        )
 
     async def sleep(self, key: str) -> bool:
         handle = self._live.pop(key, None)
@@ -164,7 +169,9 @@ class AgentRunner:
             stale = [
                 key
                 for key, handle in self._live.items()
-                if now - handle.touched_at > IDLE_SLEEP_AFTER and not self.is_busy(key)
+                if not handle.pinned
+                and now - handle.touched_at > IDLE_SLEEP_AFTER
+                and not self.is_busy(key)
             ]
             for key in stale:
                 await self.sleep(key)

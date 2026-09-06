@@ -29,6 +29,7 @@ class Deps:
     capabilities: frozenset[Capability]
     icons: list[tuple[str, str]] = field(default_factory=list)
     inbox: Path = field(default_factory=lambda: Path("./data/inbox"))
+    maintenance_lock: Path = field(default_factory=lambda: Path("./data/main.lock"))
     _cache: tuple[float, UsageSnapshot] | None = field(default=None, init=False)
     _warned_at: float = field(default=0.0, init=False)
     _redirected_at: float = field(default=0.0, init=False)

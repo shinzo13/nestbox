@@ -33,6 +33,10 @@ async def handle_message(message: Message, deps: Deps) -> None:
     if await consume_pending(message, deps, branch):
         return
 
+    if branch.is_main and deps.maintenance_lock.exists():
+        await message.answer("main is in a manual terminal session right now, wait a bit")
+        return
+
     key = SessionStore.key(chat_id, thread_id)
     if deps.runner.is_busy(key):
         await message.reply("busy with the current task, /stop to cancel")

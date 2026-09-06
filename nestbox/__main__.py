@@ -12,6 +12,7 @@ from nestbox.bot.deps import Deps
 from nestbox.bot.handlers import build_router
 from nestbox.bot.middlewares import BranchOnlyMiddleware, OwnerOnlyMiddleware
 from nestbox.bot.runner import AgentRunner
+from nestbox.bot.supervisor import MainSupervisor
 from nestbox.config import load_settings
 from nestbox.core.engine.claude import ClaudeEngine
 from nestbox.core.branches import Branch, BranchStore
@@ -73,7 +74,7 @@ async def main() -> None:
     settings = load_settings()
     registry = AgentRegistry.from_file(settings.agents_config)
     sessions = SessionStore(settings.sessions_path)
-    branches = BranchStore(settings.data_dir / "branches.json")
+    branches = BranchStore(settings.branches_path)
     engine = ClaudeEngine()
     runner = AgentRunner(engine, sessions)
     deps = Deps(
@@ -85,6 +86,7 @@ async def main() -> None:
         warn_threshold=settings.usage_warn_threshold,
         capabilities=engine.capabilities,
         inbox=settings.data_dir / "inbox",
+        maintenance_lock=settings.maintenance_lock,
     )
 
     bot = Bot(
@@ -101,6 +103,8 @@ async def main() -> None:
     runner.start_janitor()
     deps.icons = await load_icons(bot)
     await ensure_main_branch(bot, branches, settings.chat_id or settings.owner_id)
+    supervisor = MainSupervisor(deps, settings.chat_id or settings.owner_id, settings.maintenance_lock)
+    supervisor.start()
     await bot.set_my_commands(COMMANDS)
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())

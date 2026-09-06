@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Send a message to the owner in the main branch, straight through the Bot API.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+text="${*:-}"
+[ -n "$text" ] || { echo "usage: say <text>"; exit 1; }
+
+eval "$(python3 - "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+env = dict(
+    line.split("=", 1)
+    for line in (root / ".env").read_text(encoding="utf-8").splitlines()
+    if "=" in line and not line.startswith("#")
+)
+branches = json.loads((root / "data/branches.json").read_text(encoding="utf-8") or "{}")
+main = next((b for b in branches.values() if b.get("is_main")), None)
+print(f"TOKEN={env['BOT_TOKEN']}")
+print(f"CHAT={env.get('CHAT_ID') or env['OWNER_ID']}")
+print(f"THREAD={main['thread_id'] if main else 0}")
+PY
+)"
+
+curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" \
+    --data-urlencode "chat_id=$CHAT" \
+    --data-urlencode "message_thread_id=$THREAD" \
+    --data-urlencode "text=$text" > /dev/null

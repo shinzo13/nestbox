@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     def sessions_path(self) -> Path:
         return self.data_dir / "sessions.json"
 
+    @property
+    def branches_path(self) -> Path:
+        return self.data_dir / "branches.json"
+
+    @property
+    def maintenance_lock(self) -> Path:
+        """While this file exists, main is handed to a manual terminal session."""
+        return self.data_dir / "main.lock"
+
 
 def load_settings() -> Settings:
     settings = Settings()
