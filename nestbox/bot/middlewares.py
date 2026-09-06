@@ -35,6 +35,9 @@ class BranchOnlyMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         deps = data.get("deps")
+        text = (getattr(event, "text", None) or "") if isinstance(event, Message) else ""
+        if text.startswith("/bind"):
+            return await handler(event, data)
         if isinstance(event, Message) and deps is not None and event.message_thread_id is None:
             await deps.redirect_to_main(event)
             return None

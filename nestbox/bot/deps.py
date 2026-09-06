@@ -12,6 +12,7 @@ from nestbox.core.branches import BranchStore
 from nestbox.core.engine.base import Capability
 from nestbox.core.registry import AgentRegistry
 from nestbox.core.sessions import SessionStore
+from nestbox.core.state import State
 from nestbox.core.usage import UsageClient, UsageSnapshot
 
 USAGE_CACHE_TTL = 120.0
@@ -23,6 +24,8 @@ class Deps:
     registry: AgentRegistry
     sessions: SessionStore
     branches: BranchStore
+    state: State
+    chat_id: int
     runner: AgentRunner
     usage: UsageClient
     warn_threshold: int

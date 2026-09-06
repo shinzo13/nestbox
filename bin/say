@@ -18,8 +18,10 @@ env = dict(
 )
 branches = json.loads((root / "data/branches.json").read_text(encoding="utf-8") or "{}")
 main = next((b for b in branches.values() if b.get("is_main")), None)
+state_path = root / "data/state.json"
+state = json.loads(state_path.read_text(encoding="utf-8") or "{}") if state_path.exists() else {}
 print(f"TOKEN={env['BOT_TOKEN']}")
-print(f"CHAT={env.get('CHAT_ID') or env['OWNER_ID']}")
+print(f"CHAT={state.get('chat_id') or env.get('CHAT_ID') or env['OWNER_ID']}")
 print(f"THREAD={main['thread_id'] if main else 0}")
 PY
 )"

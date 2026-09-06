@@ -22,6 +22,10 @@ class Settings(BaseSettings):
         return self.data_dir / "sessions.json"
 
     @property
+    def state_path(self) -> Path:
+        return self.data_dir / "state.json"
+
+    @property
     def branches_path(self) -> Path:
         return self.data_dir / "branches.json"
 

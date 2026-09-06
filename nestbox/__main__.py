@@ -17,6 +17,7 @@ from nestbox.config import load_settings
 from nestbox.core.engine.claude import ClaudeEngine
 from nestbox.core.branches import Branch, BranchStore
 from nestbox.core.registry import AgentRegistry
+from nestbox.core.state import State
 from nestbox.core.sessions import SessionStore
 from nestbox.core.usage import UsageClient
 
@@ -75,12 +76,16 @@ async def main() -> None:
     registry = AgentRegistry.from_file(settings.agents_config)
     sessions = SessionStore(settings.sessions_path)
     branches = BranchStore(settings.branches_path)
+    state = State(settings.state_path)
+    chat_id = state.get("chat_id") or settings.chat_id or settings.owner_id
     engine = ClaudeEngine()
     runner = AgentRunner(engine, sessions)
     deps = Deps(
         registry=registry,
         sessions=sessions,
         branches=branches,
+        state=state,
+        chat_id=chat_id,
         runner=runner,
         usage=UsageClient(settings.credentials_path),
         warn_threshold=settings.usage_warn_threshold,
@@ -102,8 +107,8 @@ async def main() -> None:
 
     runner.start_janitor()
     deps.icons = await load_icons(bot)
-    await ensure_main_branch(bot, branches, settings.chat_id or settings.owner_id)
-    supervisor = MainSupervisor(deps, settings.chat_id or settings.owner_id, settings.maintenance_lock)
+    await ensure_main_branch(bot, branches, chat_id, registry.default.name)
+    supervisor = MainSupervisor(deps, chat_id, settings.maintenance_lock)
     supervisor.start()
     await bot.set_my_commands(COMMANDS)
     await bot.delete_webhook(drop_pending_updates=True)
