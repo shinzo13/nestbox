@@ -18,6 +18,14 @@ working; only the transport is ours.
 - `nestbox/bot/preview.py` — the single message a run lives in: placeholder, tool
   progress, then the answer itself.
 
+## Code names
+
+Branch agents get code names picked by the orchestrator (stars: `vega`,
+`orion`, `lyra`, `mira`), never the project's own name — a topic called
+`web` next to the web repo reads as the repo itself. The project the
+agent works on stays in the agent's `description` and `cwd`, and the old name
+survives as an alias.
+
 ## Commands
 
 | command | what it does |
