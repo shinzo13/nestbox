@@ -184,7 +184,7 @@ class AgentRunner:
                     stream.tool(label)
                     await stream.flush()
                 elif isinstance(event, ThinkingChunk):
-                    log.info("thinking %d chars", len(event.text or ""))
+                    # on some models the block arrives signed but without text: nothing to show
                     stream.think(event.text)
                     await stream.flush()
                 elif isinstance(event, TextChunk):
