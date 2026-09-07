@@ -38,6 +38,14 @@ def _human_size(size: int | None) -> str:
     return f"{size / 1024 / 1024:.1f} MB"
 
 
+def _too_big(label: str, size: int | None, file_id: str) -> str:
+    """The Bot API will not hand this file over, but mtproto will."""
+    return (
+        f"{label} ({_human_size(size)}) is over the Bot API limit, fetch it over mtproto: "
+        f"`uv run python -m nestbox.bigfile {file_id}` from the bot's directory"
+    )
+
+
 async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list[str]]:
     """Downloaded files, and why the rest could not be taken."""
     saved: list[Path] = []
@@ -45,7 +53,7 @@ async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list
     for file_id, name, size in _candidates(message):
         label = name or "file"
         if size is not None and size > BOT_API_LIMIT:
-            skipped.append(f"{label} ({_human_size(size)}): the Bot API only serves files up to 20 MB")
+            skipped.append(_too_big(label, size, file_id))
             continue
         try:
             info = await message.bot.get_file(file_id)
@@ -55,7 +63,10 @@ async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list
             await message.bot.download_file(info.file_path, destination=target)
         except TelegramBadRequest as exc:
             log.warning("attachment %s failed to download: %s", label, exc)
-            skipped.append(f"{label} ({_human_size(size)}): telegram refused: {exc.message}")
+            if "too big" in exc.message.lower():
+                skipped.append(_too_big(label, size, file_id))
+            else:
+                skipped.append(f"{label} ({_human_size(size)}): telegram refused: {exc.message}")
             continue
         saved.append(target)
     return saved, skipped

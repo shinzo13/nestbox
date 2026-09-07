@@ -31,6 +31,13 @@ orchestrator's branch. Cron watchers (a container watcher, a log watcher)
 use it instead of messaging the owner, so a container problem lands on the
 orchestrator first. If the bot is down, `nudge` falls back to a direct alert.
 
+## Big files
+
+`getFile` stops at 20 MB. Anything larger is reported into the prompt with its
+file_id, and `uv run python -m nestbox.bigfile <file_id> [dest]` pulls it over
+mtproto with the same bot token (`TG_API_ID`/`TG_API_HASH` in `.env`, session
+in `data/mtproto-bot.session`).
+
 ## Names
 
 A topic is named after what it is for (`master`, `web`, `api`) while

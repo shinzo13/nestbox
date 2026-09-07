@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("./data"))
     agents_config: Path = Field(default=Path("./config/agents.toml"))
 
+    tg_api_id: int | None = None
+    tg_api_hash: str | None = None
+
     usage_warn_threshold: int = 80
     credentials_path: Path = Field(default=Path.home() / ".claude" / ".credentials.json")
 

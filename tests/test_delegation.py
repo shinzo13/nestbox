@@ -104,3 +104,11 @@ def test_event_pump_waits_while_busy(tmp_path):
     run(scenario())
     assert runner.calls == []
     assert len(list(folder.glob("*.txt"))) == 1
+
+
+def test_big_file_hint_carries_the_file_id():
+    from nestbox.bot.attachments import _too_big
+
+    hint = _too_big("video.mp4", 60 * 1024 * 1024, "BAADdeadbeef")
+    assert "60.0 MB" in hint
+    assert "app.bigfile BAADdeadbeef" in hint
