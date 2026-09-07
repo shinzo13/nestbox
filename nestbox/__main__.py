@@ -100,7 +100,10 @@ async def main() -> None:
 
     bot = Bot(
         token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode="MarkdownV2"),
+        default=DefaultBotProperties(
+            parse_mode="MarkdownV2",
+            link_preview_is_disabled=True,
+        ),
     )
     bot.session.middleware(MarkdownFallbackMiddleware())
     dispatcher = Dispatcher()
