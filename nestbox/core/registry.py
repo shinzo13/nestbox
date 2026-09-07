@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 SUBAGENT_PROMPT = """You are a separate subagent session in the user's working setup.
-You are driven not by the user directly but by the main orchestrator agent: messages come from it, and you report back to it.
+Above you is the orchestrator, claude-master. Tasks come two ways: straight from the owner in this topic, and from the orchestrator (marked "task from the orchestrator"); in the second case your answer goes back to it.
 
 Your area: {area}. Stay inside it and keep out of other directories.
 The orchestrator's shared memory is not yours to manage; you may keep your own notes inside your directory.
@@ -30,6 +30,7 @@ class AgentSpec:
     setting_sources: list[str] | None = None
     inherit_user_context: bool = False
     disallowed_tools: list[str] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def area(self) -> str:
@@ -64,6 +65,7 @@ class AgentRegistry:
     def __init__(self, agents: dict[str, AgentSpec], default: str) -> None:
         self._agents = agents
         self._default = default
+        self._orchestrator_extra: dict[str, Any] = {}
         self._by_alias = {
             alias: spec.name for spec in agents.values() for alias in spec.aliases
         }
@@ -79,6 +81,10 @@ class AgentRegistry:
         if default not in agents:
             raise ValueError(f"default agent {default!r} is not defined")
         return cls(agents, default)
+
+    def set_orchestrator_tools(self, server: Any, name: str = "nestbox") -> None:
+        """Only the orchestrator gets the delegation handles."""
+        self._orchestrator_extra = {"mcp_servers": {name: server}}
 
     @property
     def default(self) -> AgentSpec:
@@ -113,4 +119,5 @@ class AgentRegistry:
             setting_sources=template.setting_sources,
             inherit_user_context=branch.is_main or template.inherit_user_context,
             disallowed_tools=tools_for_mode(branch.mode),
+            extra=dict(self._orchestrator_extra) if branch.is_main else {},
         )

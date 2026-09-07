@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Wake the orchestrator with a task: the event lands in the bot's queue and
+# becomes an ordinary run in its branch. If the bot is down, it goes out as a
+# direct alert to the owner instead.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+QUEUE="$ROOT/data/events"
+text="${*:-}"
+[ -n "$text" ] || { echo "usage: nudge <text>"; exit 1; }
+
+if ! systemctl --user is-active --quiet "$UNIT"; then
+    "$ROOT/bin/say" "⚠️ the bot is down, this event did not reach the orchestrator:
+
+$text" || true
+    exit 1
+fi
+
+mkdir -p "$QUEUE"
+printf '%s\n' "$text" > "$QUEUE/$(date +%s%N).txt"

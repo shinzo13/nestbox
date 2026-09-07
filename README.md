@@ -18,6 +18,19 @@ working; only the transport is ours.
 - `nestbox/bot/preview.py` — the single message a run lives in: placeholder, tool
   progress, then the answer itself.
 
+## Delegation
+
+The orchestrator carries an in-process MCP server (`nestbox/core/delegation.py`)
+with `agents`, `delegate`, `new_branch` and `drop_branch`. `delegate` runs the
+task in the target branch through the same runner, so the exchange shows up in
+that branch's topic and the report comes back to the orchestrator.
+
+Outside events reach the orchestrator through `data/events`: `bin/nudge <text>`
+drops a file there, `EventPump` picks it up and turns it into a run in the
+orchestrator's branch. Cron watchers (a container watcher, a log watcher)
+use it instead of messaging the owner, so a container problem lands on the
+orchestrator first. If the bot is down, `nudge` falls back to a direct alert.
+
 ## Names
 
 A topic is named after what it is for (`master`, `web`, `api`) while

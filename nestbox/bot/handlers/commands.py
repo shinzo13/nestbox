@@ -95,6 +95,10 @@ async def cmd_wake(message: Message, deps: Deps) -> None:
 
 @router.message(Command("sleep"))
 async def cmd_sleep(message: Message, deps: Deps) -> None:
+    branch = await deps.branches.get(message.message_thread_id)
+    if branch is not None and branch.is_main:
+        await message.answer(escape_md("the orchestrator does not sleep"))
+        return
     key = SessionStore.key(message.chat.id, message.message_thread_id)
     if await deps.runner.sleep(key):
         await message.answer(escape_md("💤 asleep, session kept"))

@@ -135,6 +135,7 @@ class AgentRunner:
             skills=spec.skills,
             setting_sources=spec.effective_setting_sources(),
             disallowed_tools=spec.disallowed_tools,
+            extra=dict(spec.extra),
         )
 
     async def run(

@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand
 
 from nestbox.bot.deps import Deps
+from nestbox.bot.events import EventPump
 from nestbox.bot.handlers import build_router
 from nestbox.bot.middlewares import (
     BranchOnlyMiddleware,
@@ -18,6 +19,7 @@ from nestbox.bot.middlewares import (
 from nestbox.bot.runner import AgentRunner
 from nestbox.bot.supervisor import MainSupervisor
 from nestbox.config import load_settings
+from nestbox.core.delegation import build_orchestrator_tools
 from nestbox.core.engine.claude import ClaudeEngine
 from nestbox.core.branches import Branch, BranchStore
 from nestbox.core.registry import AgentRegistry
@@ -106,6 +108,7 @@ async def main() -> None:
         ),
     )
     bot.session.middleware(MarkdownFallbackMiddleware())
+    registry.set_orchestrator_tools(build_orchestrator_tools(lambda: deps, lambda: bot))
     dispatcher = Dispatcher()
     dispatcher["deps"] = deps
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))
@@ -118,6 +121,7 @@ async def main() -> None:
     await ensure_main_branch(bot, branches, chat_id, registry.default.name)
     supervisor = MainSupervisor(deps, chat_id, settings.maintenance_lock)
     supervisor.start()
+    EventPump(deps, bot, settings.data_dir / "events").start()
     await bot.set_my_commands(COMMANDS)
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
