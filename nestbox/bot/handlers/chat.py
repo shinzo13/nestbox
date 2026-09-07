@@ -7,7 +7,6 @@ from nestbox.bot.attachments import save_incoming, send_attachments
 from nestbox.bot.formatting import escape_md
 from nestbox.bot.deps import Deps
 from nestbox.bot.handlers.branch import consume_pending
-from nestbox.bot.runner import render_reply
 from nestbox.core.sessions import SessionStore
 
 router = Router(name="chat")
@@ -35,7 +34,7 @@ async def handle_message(message: Message, deps: Deps) -> None:
         return
 
     if branch.is_main and deps.maintenance_lock.exists():
-        await message.answer(escape_md("main is in a manual terminal session right now, wait a bit"))
+        await message.answer(escape_md(f"{branch.title} is in a manual terminal session right now, wait a bit"))
         return
 
     key = SessionStore.key(chat_id, thread_id)
@@ -55,10 +54,7 @@ async def handle_message(message: Message, deps: Deps) -> None:
         resume_session=record.session_id if record else None,
     )
 
-    chunks, attachments = render_reply(outcome)
-    for chunk in chunks:
-        await message.answer(chunk)
-    if attachments:
-        await send_attachments(message, attachments)
+    if outcome.attachments:
+        await send_attachments(message, outcome.attachments)
 
     await deps.maybe_warn_usage(message)

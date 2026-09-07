@@ -15,10 +15,8 @@ working; only the transport is ours.
 - `nestbox/core/sessions.py` — topic to session mapping, JSON on disk.
 - `nestbox/core/usage.py` — subscription limits via the OAuth usage endpoint.
 - `nestbox/bot/` — aiogram layer: handlers, live preview, formatting.
-- `nestbox/bot/preview.py` — what the answer looks like while it is being written:
-  `sendMessageDraft` in private chats, an edited message everywhere else.
-  Turn it off with `STREAM_REPLIES=0` and the preview falls back to the old
-  list of tool calls.
+- `nestbox/bot/preview.py` — the single message a run lives in: placeholder, tool
+  progress, then the answer itself.
 
 ## Commands
 
@@ -40,24 +38,21 @@ cp .env.example .env   # BOT_TOKEN, OWNER_ID
 uv run python -m nestbox
 ```
 
-The run summary (`✅ main · 1m19s · 15 tool calls`) is appended to the answer
+The run summary (`✅ master · 1m19s · 15 tool calls`) is appended to the answer
 itself, so a reply is always a single message.
 
 The bot only answers `OWNER_ID`. Agents run with `bypassPermissions` by default;
 override per agent in `config/agents.toml`.
 
-## Streaming replies
+## One message per run
 
-`STREAM_REPLIES=1` (default) streams the answer as it is generated: partial text
-is pushed into a live preview, which disappears once the final message is sent.
-Private chats use `sendMessageDraft`; groups fall back to editing a placeholder
-message, since Telegram rejects drafts outside private chats. Set
-`STREAM_REPLIES=0` and restart to get the old behaviour (tool list only).
-
-The run summary (`✅ main · 1m19s · 15 tool calls`) is appended to the end of the
-reply instead of being sent as a separate message before it.
+A run starts by posting `⏳ master is working…`, which lists the tools as they are
+called and is then edited into the answer itself — no extra messages, no
+deletions. The run summary (`✅ master · 1m19s · 15 tool calls`) is appended to
+the tail of that message. Answers longer than one Telegram message spill into
+follow-up messages.
 
 ## Known gaps
 
 - Nested markdown (lists inside quotes, tables) is flattened to plain text.
-- Streaming in groups relies on message edits, so it updates every 3s, not live.
+- Progress updates are throttled to one edit per 3s by Telegram's limits.

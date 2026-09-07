@@ -9,7 +9,6 @@ from aiogram.types import Message
 from nestbox.bot.attachments import send_attachments
 from nestbox.bot.deps import Deps
 from nestbox.bot.formatting import escape_md
-from nestbox.bot.runner import render_reply
 from nestbox.core.engine.base import Capability
 from nestbox.core.sessions import SessionStore
 
@@ -17,7 +16,7 @@ router = Router(name="commands")
 
 TOPIC_NAME_LIMIT = 128
 
-HELP = """branches are created by the orchestrator: ask it in main.
+HELP = """branches are created by the orchestrator: ask it in the main topic.
 
 commands:
 /branch - configure this branch: title, icon
@@ -175,8 +174,5 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
         fork=True,
         persist=False,
     )
-    chunks, attachments = render_reply(outcome)
-    for chunk in chunks:
-        await message.answer(chunk)
-    if attachments:
-        await send_attachments(message, attachments)
+    if outcome.attachments:
+        await send_attachments(message, outcome.attachments)

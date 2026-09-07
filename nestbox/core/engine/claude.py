@@ -9,7 +9,6 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     RateLimitEvent,
     ResultMessage,
-    StreamEvent,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -24,7 +23,6 @@ from nestbox.core.engine.base import (
     Event,
     Failed,
     Finished,
-    PartialText,
     RateLimitWarning,
     RunRequest,
     SessionStarted,
@@ -107,7 +105,7 @@ class ClaudeEngine(Engine):
             skills=request.skills if request.skills is not None else "all",
             setting_sources=request.setting_sources or self._setting_sources,
             disallowed_tools=request.disallowed_tools,
-            include_partial_messages=request.stream,
+            include_partial_messages=False,
             **request.extra,
         )
 
@@ -149,8 +147,6 @@ class ClaudeEngine(Engine):
                     events.append(
                         ToolFinished(name="", is_error=bool(block.is_error))
                     )
-        elif isinstance(message, StreamEvent):
-            events.extend(self._translate_partial(message))
         elif isinstance(message, RateLimitEvent):
             info = message.rate_limit_info
             events.append(
@@ -172,19 +168,6 @@ class ClaudeEngine(Engine):
                 )
             )
         return events
-
-    @staticmethod
-    def _translate_partial(message: StreamEvent) -> list[Event]:
-        if message.parent_tool_use_id is not None:
-            return []
-        event = message.event or {}
-        if event.get("type") != "content_block_delta":
-            return []
-        delta = event.get("delta") or {}
-        if delta.get("type") != "text_delta":
-            return []
-        text = delta.get("text") or ""
-        return [PartialText(text=text)] if text else []
 
     def live(self, request: RunRequest) -> ClaudeLiveSession:
         return ClaudeLiveSession(self, request)

@@ -2,7 +2,6 @@ import asyncio
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import SendMessageDraft
 
 from nestbox.bot.preview import LivePreview
 from nestbox.bot.runner import RunOutcome, append_summary, render_reply
@@ -14,19 +13,10 @@ class FakeMessage:
 
 
 class FakeBot:
-    def __init__(self, draft_error: bool = False) -> None:
-        self.drafts: list[str] = []
+    def __init__(self) -> None:
         self.sent: list[str] = []
         self.edits: list[str] = []
         self.deleted: list[int] = []
-        self._draft_error = draft_error
-
-    async def __call__(self, method):
-        assert isinstance(method, SendMessageDraft)
-        if self._draft_error:
-            raise TelegramBadRequest(method=method, message="TEXTDRAFT_PEER_INVALID")
-        self.drafts.append(method.text)
-        return True
 
     async def send_message(self, *, text, **kwargs):
         self.sent.append(text)
@@ -43,67 +33,48 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_private_chat_streams_drafts():
+def test_placeholder_turns_into_the_answer():
     bot = FakeBot()
-    preview = LivePreview(bot, 123456789, 23, stream=True)
+    preview = LivePreview(bot, -1001234567890, 23)
 
     async def scenario():
-        await preview.start("main")
-        preview.partial("hel")
+        await preview.start("master")
+        preview.tool("Bash: git log")
         await preview.flush(force=True)
-        preview.partial("lo")
-        await preview.flush(force=True)
-        await preview.close()
-
-    run(scenario())
-    assert bot.sent == []
-    assert bot.drafts[0].startswith("⏳")
-    assert "hello" in bot.drafts[-1]
-    assert bot.deleted == []
-
-
-def test_group_falls_back_to_edits_and_cleans_up():
-    bot = FakeBot(draft_error=True)
-    preview = LivePreview(bot, -1001234567890, 23, stream=True)
-
-    async def scenario():
-        await preview.start("main")
-        preview.partial("answer")
-        await preview.flush(force=True)
-        await preview.close()
+        await preview.finish(["done"])
 
     run(scenario())
     assert len(bot.sent) == 1
-    assert "answer" in bot.edits[-1]
-    assert bot.deleted == [1]
+    assert bot.sent[0].startswith("⏳ master")
+    assert "Bash: git log" in bot.edits[0].replace("\\", "")
+    assert bot.edits[-1] == "done"
+    assert bot.deleted == []
 
 
-def test_stop_note_survives_as_message():
+def test_long_answer_spills_into_extra_messages():
     bot = FakeBot()
-    preview = LivePreview(bot, 123456789, 23, stream=True)
+    preview = LivePreview(bot, -1001234567890, 23)
 
     async def scenario():
-        await preview.start("main")
-        await preview.close("⛔ stopped")
+        await preview.start("master")
+        await preview.finish(["first", "second"])
 
     run(scenario())
-    assert bot.sent == ["⛔ stopped"]
+    assert bot.edits[-1] == "first"
+    assert bot.sent[-1] == "second"
 
 
-def test_tools_are_shown_without_stream():
+def test_stop_note_replaces_the_placeholder():
     bot = FakeBot()
-    preview = LivePreview(bot, -100123, None, stream=False)
+    preview = LivePreview(bot, -1001234567890, 23)
 
     async def scenario():
-        await preview.start("web")
-        preview.tool("Bash: git log")
-        preview.partial("this must not reach the preview")
-        await preview.flush(force=True)
-        await preview.close()
+        await preview.start("master")
+        await preview.fail("⛔ stopped")
 
     run(scenario())
-    assert "Bash: git log" in bot.edits[-1].replace("\\", "")
-    assert "must not" not in bot.edits[-1]
+    assert len(bot.sent) == 1
+    assert bot.edits[-1] == "⛔ stopped"
 
 
 @pytest.mark.parametrize("summary", [None, ""])

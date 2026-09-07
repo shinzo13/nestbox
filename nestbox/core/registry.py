@@ -75,7 +75,7 @@ class AgentRegistry:
         agents = {
             name: AgentSpec(name=name, **body) for name, body in entries.items()
         }
-        default = raw.get("default", next(iter(agents), "main"))
+        default = raw.get("default", next(iter(agents), "master"))
         if default not in agents:
             raise ValueError(f"default agent {default!r} is not defined")
         return cls(agents, default)

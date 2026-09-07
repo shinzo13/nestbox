@@ -50,12 +50,12 @@ async def ensure_main_branch(
     """The orchestrator lives in a branch of its own, not in the general chat."""
     if chat_id is None or await branches.main() is not None:
         return
-    topic = await bot.create_forum_topic(chat_id=chat_id, name="main")
+    topic = await bot.create_forum_topic(chat_id=chat_id, name="master")
     await branches.add(
         Branch(
             thread_id=topic.message_thread_id,
-            agent="main",
-            title="main",
+            agent="master",
+            title="master",
             cwd=str(Path.home()),
             mode="work",
             is_main=True,
@@ -83,7 +83,7 @@ async def main() -> None:
     state = State(settings.state_path)
     chat_id = state.get("chat_id") or settings.chat_id or settings.owner_id
     engine = ClaudeEngine()
-    runner = AgentRunner(engine, sessions, stream=settings.stream_replies)
+    runner = AgentRunner(engine, sessions)
     deps = Deps(
         registry=registry,
         sessions=sessions,

@@ -44,7 +44,7 @@ class Deps:
             return
         self._redirected_at = now
         main = await self.branches.main()
-        where = f"«{main.title}»" if main else "main"
+        where = f"«{main.title}»" if main else "master"
         await message.answer(escape_md(f"the general chat belongs to nobody, write in {where}"))
 
     async def usage_snapshot(self, force: bool = False) -> UsageSnapshot:

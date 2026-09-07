@@ -22,7 +22,6 @@ from nestbox.core.engine.base import (
     LiveSession,
     Failed,
     Finished,
-    PartialText,
     RateLimitWarning,
     RunRequest,
     SessionStarted,
@@ -46,6 +45,7 @@ class RunOutcome:
     rate_limit: RateLimitWarning | None = None
     tools: list[str] = field(default_factory=list)
     summary: str | None = None
+    attachments: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -57,10 +57,9 @@ class LiveHandle:
 
 
 class AgentRunner:
-    def __init__(self, engine: Engine, store: SessionStore, stream: bool = False) -> None:
+    def __init__(self, engine: Engine, store: SessionStore) -> None:
         self._engine = engine
         self._store = store
-        self._stream = stream
         self._active: dict[str, asyncio.Task] = {}
         self._live: dict[str, LiveHandle] = {}
         self._janitor: asyncio.Task | None = None
@@ -136,7 +135,6 @@ class AgentRunner:
             skills=spec.skills,
             setting_sources=spec.effective_setting_sources(),
             disallowed_tools=spec.disallowed_tools,
-            stream=self._stream,
         )
 
     async def run(
@@ -152,7 +150,7 @@ class AgentRunner:
         persist: bool = True,
     ) -> RunOutcome:
         key = SessionStore.key(chat_id, thread_id)
-        preview = LivePreview(bot, chat_id, thread_id, stream=self._stream)
+        preview = LivePreview(bot, chat_id, thread_id)
         await preview.start(spec.name)
 
         handle = None if fork else self._live.get(key)
@@ -178,11 +176,7 @@ class AgentRunner:
                 elif isinstance(event, ToolStarted):
                     label = f"{event.name}: {event.summary}" if event.summary else event.name
                     outcome.tools.append(event.name)
-                    preview.block_done()
                     preview.tool(label)
-                    await preview.flush()
-                elif isinstance(event, PartialText):
-                    preview.partial(event.text)
                     await preview.flush()
                 elif isinstance(event, TextChunk):
                     texts.append(event.text)
@@ -199,7 +193,7 @@ class AgentRunner:
                 elif isinstance(event, Failed):
                     outcome.error = event.message
         except asyncio.CancelledError:
-            await preview.close("⛔ stopped")
+            await preview.fail("⛔ stopped")
             raise
         finally:
             self._active.pop(key, None)
@@ -208,7 +202,8 @@ class AgentRunner:
 
         outcome.text = self._pick_text(texts)
         outcome.summary = self._summary_line(spec.name, outcome)
-        await preview.close()
+        chunks, outcome.attachments = render_reply(outcome)
+        await preview.finish(chunks)
         return outcome
 
     @staticmethod

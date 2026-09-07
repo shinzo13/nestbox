@@ -27,7 +27,6 @@ class RunRequest:
     skills: list[str] | None = None
     setting_sources: list[str] | None = None
     disallowed_tools: list[str] = field(default_factory=list)
-    stream: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -46,14 +45,6 @@ class SessionStarted(Event):
 class TextChunk(Event):
     text: str
     kind: ClassVar[str] = "text"
-
-
-@dataclass(slots=True)
-class PartialText(Event):
-    """A piece of text as it is generated, only for the live preview."""
-
-    text: str
-    kind: ClassVar[str] = "partial_text"
 
 
 @dataclass(slots=True)
