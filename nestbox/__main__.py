@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand
 
 from nestbox.bot.deps import Deps
+from nestbox.bot.errors import register_error_handler
 from nestbox.bot.events import EventPump
 from nestbox.bot.handlers import build_router
 from nestbox.bot.middlewares import (
@@ -115,6 +116,7 @@ async def main() -> None:
     dispatcher.callback_query.middleware(OwnerOnlyMiddleware(settings.owner_id))
     dispatcher.message.middleware(BranchOnlyMiddleware())
     dispatcher.include_router(build_router())
+    register_error_handler(dispatcher, bot)
 
     runner.start_janitor()
     deps.icons = await load_icons(bot)

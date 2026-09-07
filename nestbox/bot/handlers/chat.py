@@ -15,12 +15,15 @@ router = Router(name="chat")
 @router.message()
 async def handle_message(message: Message, deps: Deps) -> None:
     text = (message.text or message.caption or "").strip()
-    files = await save_incoming(message, deps.inbox)
-    if not text and not files:
+    files, skipped = await save_incoming(message, deps.inbox)
+    if not text and not files and not skipped:
         return
     if files:
         listing = "\n".join(f"- {path}" for path in files)
         text = f"{text}\n\nattached files:\n{listing}".strip()
+    if skipped:
+        listing = "\n".join(f"- {reason}" for reason in skipped)
+        text = f"{text}\n\nattachments that could not be fetched:\n{listing}".strip()
 
     chat_id = message.chat.id
     thread_id = message.message_thread_id

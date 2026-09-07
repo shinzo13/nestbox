@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 PHOTO_SUFFIX = ".jpg"
+# the cloud Bot API getFile limit; beyond it you need your own api server
+BOT_API_LIMIT = 20 * 1024 * 1024
+
+log = logging.getLogger(__name__)
 
 
-def _candidates(message: Message) -> list[tuple[str, str | None]]:
-    """file_id and a name hint, for every kind of attachment a person sends."""
+def _candidates(message: Message) -> list[tuple[str, str | None, int | None]]:
+    """file_id, a name hint and the size, for every kind of attachment a person sends."""
     if message.photo:
-        return [(message.photo[-1].file_id, None)]
+        largest = message.photo[-1]
+        return [(largest.file_id, None, largest.file_size)]
     for attachment, name in (
         (message.document, getattr(message.document, "file_name", None)),
         (message.audio, getattr(message.audio, "file_name", None)),
@@ -21,20 +28,37 @@ def _candidates(message: Message) -> list[tuple[str, str | None]]:
         (message.sticker, None),
     ):
         if attachment is not None:
-            return [(attachment.file_id, name)]
+            return [(attachment.file_id, name, getattr(attachment, "file_size", None))]
     return []
 
 
-async def save_incoming(message: Message, inbox: Path) -> list[Path]:
+def _human_size(size: int | None) -> str:
+    if not size:
+        return "unknown size"
+    return f"{size / 1024 / 1024:.1f} MB"
+
+
+async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list[str]]:
+    """Downloaded files, and why the rest could not be taken."""
     saved: list[Path] = []
-    for file_id, name in _candidates(message):
-        info = await message.bot.get_file(file_id)
-        suffix = Path(name or info.file_path or PHOTO_SUFFIX).suffix or PHOTO_SUFFIX
-        target = inbox / f"{file_id[-16:]}{suffix}"
-        inbox.mkdir(parents=True, exist_ok=True)
-        await message.bot.download_file(info.file_path, destination=target)
+    skipped: list[str] = []
+    for file_id, name, size in _candidates(message):
+        label = name or "file"
+        if size is not None and size > BOT_API_LIMIT:
+            skipped.append(f"{label} ({_human_size(size)}): the Bot API only serves files up to 20 MB")
+            continue
+        try:
+            info = await message.bot.get_file(file_id)
+            suffix = Path(name or info.file_path or PHOTO_SUFFIX).suffix or PHOTO_SUFFIX
+            target = inbox / f"{file_id[-16:]}{suffix}"
+            inbox.mkdir(parents=True, exist_ok=True)
+            await message.bot.download_file(info.file_path, destination=target)
+        except TelegramBadRequest as exc:
+            log.warning("attachment %s failed to download: %s", label, exc)
+            skipped.append(f"{label} ({_human_size(size)}): telegram refused: {exc.message}")
+            continue
         saved.append(target)
-    return saved
+    return saved, skipped
 
 
 async def send_attachments(message: Message, paths: list[str]) -> list[str]:
