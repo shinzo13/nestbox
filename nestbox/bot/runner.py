@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 
@@ -34,6 +35,8 @@ from nestbox.core.sessions import SessionStore
 
 IDLE_SLEEP_AFTER = 1800.0
 JANITOR_INTERVAL = 60.0
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -181,6 +184,7 @@ class AgentRunner:
                     stream.tool(label)
                     await stream.flush()
                 elif isinstance(event, ThinkingChunk):
+                    log.info("thinking %d chars", len(event.text or ""))
                     stream.think(event.text)
                     await stream.flush()
                 elif isinstance(event, TextChunk):
