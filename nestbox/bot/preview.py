@@ -102,6 +102,8 @@ class ReplyStream:
                     rich_message=self._rich(),
                 )
         except TelegramBadRequest as exc:
+            if "not modified" in str(exc):
+                return
             log.warning("tool call log failed: %s", exc)
             self._log_failed = True
 

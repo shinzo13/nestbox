@@ -128,6 +128,24 @@ def test_tool_count_stays_plain_without_a_log():
     assert "https://t.me" not in bot.edits[-1][1]
 
 
+def test_unchanged_log_is_not_treated_as_a_failure():
+    bot = FakeBot()
+
+    async def refuse(*, message_id, text=None, rich_message=None, **kwargs):
+        raise TelegramBadRequest(method=None, message="message is not modified: ...")
+
+    bot.edit_message_text = refuse
+    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+
+    async def scenario():
+        stream.tool("Bash: ls")
+        await stream.flush(force=True)
+        await stream.flush(force=True)
+        return stream._log_id
+
+    assert run(scenario()) is not None
+
+
 def test_render_block_splits_markup_and_attachments():
     chunks, attachments = render_block("**bold**\n[[send:/tmp/a.txt]]")
     assert chunks == ["*bold*"]
