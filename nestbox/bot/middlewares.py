@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, TelegramObject
+
+from nestbox.bot.formatting import strip_md_escapes
+
+log = logging.getLogger(__name__)
 
 
 class OwnerOnlyMiddleware(BaseMiddleware):
@@ -42,3 +49,20 @@ class BranchOnlyMiddleware(BaseMiddleware):
             await deps.redirect_to_main(event)
             return None
         return await handler(event, data)
+
+
+class MarkdownFallbackMiddleware(BaseRequestMiddleware):
+    """If Telegram rejects the markup, the same text goes out without it."""
+
+    async def __call__(self, make_request, bot, method):
+        try:
+            return await make_request(bot, method)
+        except TelegramBadRequest as exc:
+            text = getattr(method, "text", None)
+            if text is None or "can't parse entities" not in str(exc).lower():
+                raise
+            log.warning("markup rejected: %s", exc)
+            plain = method.model_copy(
+                update={"text": strip_md_escapes(text), "parse_mode": None}
+            )
+            return await make_request(bot, plain)

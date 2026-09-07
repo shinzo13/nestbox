@@ -4,10 +4,17 @@ import re
 
 MDV2_SPECIALS = r"_*[]()~`>#+-=|{}.!"
 TELEGRAM_LIMIT = 4096
+# markup adds escaping, so raw text is split with headroom
+MARKDOWN_LIMIT = 3000
 
 
 def escape_md(text: str) -> str:
     return "".join("\\" + ch if ch in MDV2_SPECIALS else ch for ch in text)
+
+
+def strip_md_escapes(text: str) -> str:
+    """Back to plain text, for when Telegram rejects the markup."""
+    return re.sub(r"\\([" + re.escape(MDV2_SPECIALS) + r"])", r"\1", text)
 
 
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:

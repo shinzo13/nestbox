@@ -87,7 +87,6 @@ class LivePreview:
                     message_thread_id=self._thread_id,
                     draft_id=1,
                     text=escape_md(payload),
-                    parse_mode="MarkdownV2",
                 )
             )
         except TelegramBadRequest:
@@ -103,7 +102,6 @@ class LivePreview:
                     chat_id=self._chat_id,
                     message_thread_id=self._thread_id,
                     text=escape_md(payload),
-                    parse_mode="MarkdownV2",
                 )
                 self._message_id = message.message_id
             else:
@@ -111,7 +109,6 @@ class LivePreview:
                     chat_id=self._chat_id,
                     message_id=self._message_id,
                     text=escape_md(payload),
-                    parse_mode="MarkdownV2",
                 )
         except TelegramBadRequest:
             pass

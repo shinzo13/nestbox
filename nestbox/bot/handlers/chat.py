@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.types import Message
 
 from nestbox.bot.attachments import save_incoming, send_attachments
+from nestbox.bot.formatting import escape_md
 from nestbox.bot.deps import Deps
 from nestbox.bot.handlers.branch import consume_pending
 from nestbox.bot.runner import render_reply
@@ -34,12 +35,12 @@ async def handle_message(message: Message, deps: Deps) -> None:
         return
 
     if branch.is_main and deps.maintenance_lock.exists():
-        await message.answer("main is in a manual terminal session right now, wait a bit")
+        await message.answer(escape_md("main is in a manual terminal session right now, wait a bit"))
         return
 
     key = SessionStore.key(chat_id, thread_id)
     if deps.runner.is_busy(key):
-        await message.reply("busy with the current task, /stop to cancel")
+        await message.reply(escape_md("busy with the current task, /stop to cancel"))
         return
 
     record = await deps.sessions.get(key)
@@ -56,7 +57,7 @@ async def handle_message(message: Message, deps: Deps) -> None:
 
     chunks, attachments = render_reply(outcome)
     for chunk in chunks:
-        await message.answer(chunk, parse_mode="MarkdownV2")
+        await message.answer(chunk)
     if attachments:
         await send_attachments(message, attachments)
 

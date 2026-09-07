@@ -10,7 +10,11 @@ from aiogram.types import BotCommand
 
 from nestbox.bot.deps import Deps
 from nestbox.bot.handlers import build_router
-from nestbox.bot.middlewares import BranchOnlyMiddleware, OwnerOnlyMiddleware
+from nestbox.bot.middlewares import (
+    BranchOnlyMiddleware,
+    MarkdownFallbackMiddleware,
+    OwnerOnlyMiddleware,
+)
 from nestbox.bot.runner import AgentRunner
 from nestbox.bot.supervisor import MainSupervisor
 from nestbox.config import load_settings
@@ -96,8 +100,9 @@ async def main() -> None:
 
     bot = Bot(
         token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=None),
+        default=DefaultBotProperties(parse_mode="MarkdownV2"),
     )
+    bot.session.middleware(MarkdownFallbackMiddleware())
     dispatcher = Dispatcher()
     dispatcher["deps"] = deps
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))

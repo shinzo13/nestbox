@@ -135,3 +135,49 @@ def test_render_reply_marks_errors():
     chunks, _ = render_reply(RunOutcome(error="boom", summary="⚠️ main · 3s"))
     assert "boom" in chunks[0]
     assert chunks[-1].endswith("_⚠️ main · 3s_")
+
+
+def test_render_reply_renders_markdown():
+    outcome = RunOutcome(text="**bold** and `code-1`", summary="✅ main · 3s")
+    chunks, _ = render_reply(outcome)
+    assert chunks[0].startswith("*bold* and `code-1`")
+
+
+def test_strip_md_escapes_restores_plain_text():
+    from nestbox.bot.formatting import escape_md, strip_md_escapes
+
+    original = "total: 1-2 (three). once_more!"
+    assert strip_md_escapes(escape_md(original)) == original
+
+
+def test_markdown_fallback_retries_without_parse_mode():
+    from aiogram.methods import SendMessage
+
+    from nestbox.bot.middlewares import MarkdownFallbackMiddleware
+
+    calls: list[SendMessage] = []
+
+    async def make_request(bot, method):
+        calls.append(method)
+        if len(calls) == 1:
+            raise TelegramBadRequest(method=method, message="can't parse entities: bad offset")
+        return "sent"
+
+    method = SendMessage(chat_id=1, text="a\\-b", parse_mode="MarkdownV2")
+    result = run(MarkdownFallbackMiddleware()(make_request, None, method))
+    assert result == "sent"
+    assert calls[1].text == "a-b"
+    assert calls[1].parse_mode is None
+
+
+def test_markdown_fallback_reraises_other_errors():
+    from aiogram.methods import SendMessage
+
+    from nestbox.bot.middlewares import MarkdownFallbackMiddleware
+
+    async def make_request(bot, method):
+        raise TelegramBadRequest(method=method, message="chat not found")
+
+    method = SendMessage(chat_id=1, text="hi", parse_mode="MarkdownV2")
+    with pytest.raises(TelegramBadRequest):
+        run(MarkdownFallbackMiddleware()(make_request, None, method))

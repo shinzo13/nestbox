@@ -7,6 +7,7 @@ import asyncio
 
 from aiogram import Bot
 
+from nestbox.bot.formatting import escape_md
 from nestbox.core.branches import MODES, Branch, BranchStore
 from nestbox.core.registry import AgentRegistry
 from nestbox.config import load_settings
@@ -51,7 +52,7 @@ async def create(args: argparse.Namespace) -> None:
             await bot.send_message(
                 chat_id=chat_id,
                 message_thread_id=branch.thread_id,
-                text=args.greeting,
+                text=escape_md(args.greeting),
             )
     finally:
         await bot.session.close()

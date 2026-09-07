@@ -45,7 +45,7 @@ class Deps:
         self._redirected_at = now
         main = await self.branches.main()
         where = f"«{main.title}»" if main else "main"
-        await message.answer(f"the general chat belongs to nobody, write in {where}")
+        await message.answer(escape_md(f"the general chat belongs to nobody, write in {where}"))
 
     async def usage_snapshot(self, force: bool = False) -> UsageSnapshot:
         now = time.monotonic()
@@ -66,5 +66,4 @@ class Deps:
         self._warned_at = now
         await message.answer(
             escape_md(f"⚠️ limit at {snapshot.peak:.0f}%"),
-            parse_mode="MarkdownV2",
         )

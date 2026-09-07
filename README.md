@@ -59,6 +59,5 @@ reply instead of being sent as a separate message before it.
 
 ## Known gaps
 
-- Replies are escaped as plain MarkdownV2 text, so model markdown (code blocks,
-  bold) is not rendered yet.
+- Nested markdown (lists inside quotes, tables) is flattened to plain text.
 - Streaming in groups relies on message edits, so it updates every 3s, not live.

@@ -44,7 +44,7 @@ def _fmt_reset(value: datetime | None) -> str:
 
 @router.message(Command("help", "start"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(escape_md(HELP), parse_mode="MarkdownV2")
+    await message.answer(escape_md(HELP))
 
 
 @router.message(Command("agents"))
@@ -53,7 +53,7 @@ async def cmd_agents(message: Message, deps: Deps) -> None:
     for spec in deps.registry.all():
         marker = "*" if spec.name == deps.registry.default.name else " "
         lines.append(f"{marker} {spec.name}: {spec.description or spec.cwd or ''}")
-    await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
+    await message.answer(escape_md("\n".join(lines)))
 
 
 @router.message(Command("new"))
@@ -66,14 +66,14 @@ async def cmd_new(message: Message, deps: Deps) -> None:
     await deps.runner.sleep(key)
     await deps.sessions.drop(key)
     await deps.sessions.set(key, "", branch.agent)
-    await message.answer(escape_md(f"new session, agent {branch.agent}"), parse_mode="MarkdownV2")
+    await message.answer(escape_md(f"new session, agent {branch.agent}"))
 
 
 @router.message(Command("wake"))
 async def cmd_wake(message: Message, deps: Deps) -> None:
     key = SessionStore.key(message.chat.id, message.message_thread_id)
     if Capability.LIVE not in deps.capabilities:
-        await message.answer("the engine has no live sessions")
+        await message.answer(escape_md("the engine has no live sessions"))
         return
     branch = await deps.branches.get(message.message_thread_id)
     if branch is None:
@@ -82,16 +82,15 @@ async def cmd_wake(message: Message, deps: Deps) -> None:
     record = await deps.sessions.get(key)
     spec = deps.registry.for_branch(branch)
     if deps.runner.is_awake(key):
-        await message.answer(escape_md(f"{spec.name} is already awake"), parse_mode="MarkdownV2")
+        await message.answer(escape_md(f"{spec.name} is already awake"))
         return
     try:
         await deps.runner.wake(spec, key, record.session_id if record else None)
     except Exception as exc:
-        await message.answer(escape_md(f"failed to wake: {exc}"), parse_mode="MarkdownV2")
+        await message.answer(escape_md(f"failed to wake: {exc}"))
         return
     await message.answer(
-        escape_md(f"🟢 {spec.name} is up, sleeps after 30m idle"),
-        parse_mode="MarkdownV2",
+        escape_md(f"🟢 {spec.name} is up, sleeps after 30m idle")
     )
 
 
@@ -99,25 +98,25 @@ async def cmd_wake(message: Message, deps: Deps) -> None:
 async def cmd_sleep(message: Message, deps: Deps) -> None:
     key = SessionStore.key(message.chat.id, message.message_thread_id)
     if await deps.runner.sleep(key):
-        await message.answer("💤 asleep, session kept")
+        await message.answer(escape_md("💤 asleep, session kept"))
     else:
-        await message.answer("it was not awake")
+        await message.answer(escape_md("it was not awake"))
 
 
 @router.message(Command("stop"))
 async def cmd_stop(message: Message, deps: Deps) -> None:
     key = SessionStore.key(message.chat.id, message.message_thread_id)
     if deps.runner.cancel(key):
-        await message.answer("stopping")
+        await message.answer(escape_md("stopping"))
     else:
-        await message.answer("nothing to stop")
+        await message.answer(escape_md("nothing to stop"))
 
 
 @router.message(Command("sessions"))
 async def cmd_sessions(message: Message, deps: Deps) -> None:
     records = await deps.sessions.all()
     if not records:
-        await message.answer("no sessions")
+        await message.answer(escape_md("no sessions"))
         return
     awake = deps.runner.awake_keys()
     lines = []
@@ -127,7 +126,7 @@ async def cmd_sessions(message: Message, deps: Deps) -> None:
         title = record.title or key
         mark = "🟢" if key in awake else "💤"
         lines.append(f"{mark} {title} · {record.agent} · {short} · {when}")
-    await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
+    await message.answer(escape_md("\n".join(lines)))
 
 
 @router.message(Command("usage"))
@@ -135,7 +134,7 @@ async def cmd_usage(message: Message, deps: Deps) -> None:
     try:
         snapshot = await deps.usage_snapshot(force=True)
     except Exception as exc:
-        await message.answer(escape_md(f"could not fetch usage: {exc}"), parse_mode="MarkdownV2")
+        await message.answer(escape_md(f"could not fetch usage: {exc}"))
         return
     lines = []
     for window in snapshot.windows:
@@ -144,14 +143,14 @@ async def cmd_usage(message: Message, deps: Deps) -> None:
         lines.append(f"{window.label}: {percent} {reset}".strip())
     if snapshot.extra_credits_used:
         lines.append(f"extra: {snapshot.extra_credits_used:.2f} {snapshot.currency or ''}".strip())
-    await message.answer(escape_md("\n".join(lines)), parse_mode="MarkdownV2")
+    await message.answer(escape_md("\n".join(lines)))
 
 
 @router.message(Command("btw"))
 async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
     question = (command.args or "").strip()
     if not question:
-        await message.answer("and the question?")
+        await message.answer(escape_md("and the question?"))
         return
     key = SessionStore.key(message.chat.id, message.message_thread_id)
     branch = await deps.branches.get(message.message_thread_id)
@@ -160,10 +159,10 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
         await deps.redirect_to_main(message)
         return
     if not record or not record.session_id:
-        await message.answer("no session in this branch yet, nothing to fork")
+        await message.answer(escape_md("no session in this branch yet, nothing to fork"))
         return
     if Capability.FORK not in deps.capabilities:
-        await message.answer("the engine cannot fork")
+        await message.answer(escape_md("the engine cannot fork"))
         return
     spec = deps.registry.for_branch(branch)
     outcome = await deps.runner.run(
@@ -178,6 +177,6 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
     )
     chunks, attachments = render_reply(outcome)
     for chunk in chunks:
-        await message.answer(chunk, parse_mode="MarkdownV2")
+        await message.answer(chunk)
     if attachments:
         await send_attachments(message, attachments)

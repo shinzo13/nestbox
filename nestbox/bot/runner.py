@@ -8,12 +8,14 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 
 from nestbox.bot.formatting import (
+    MARKDOWN_LIMIT,
     TELEGRAM_LIMIT,
     escape_md,
     extract_attachments,
     human_duration,
     split_message,
 )
+from nestbox.bot.markdown import to_telegram_markdown
 from nestbox.bot.preview import LivePreview
 from nestbox.core.engine.base import (
     Engine,
@@ -255,5 +257,5 @@ def render_reply(outcome: RunOutcome) -> tuple[list[str], list[str]]:
     text, attachments = extract_attachments(outcome.text)
     if not text:
         text = "done"
-    chunks = [escape_md(chunk) for chunk in split_message(text)]
+    chunks = [to_telegram_markdown(chunk) for chunk in split_message(text, MARKDOWN_LIMIT)]
     return append_summary(chunks, outcome.summary), attachments

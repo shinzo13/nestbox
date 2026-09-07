@@ -22,21 +22,21 @@ GROUP_TYPES = {"group", "supergroup"}
 async def cmd_bind(message: Message, deps: Deps) -> None:
     """Moving to a group: recreate the branches there, keep the sessions."""
     if message.chat.type not in GROUP_TYPES:
-        await message.answer("send this command in the group you are moving to")
+        await message.answer(escape_md("send this command in the group you are moving to"))
         return
 
     chat_id = message.chat.id
     if deps.state.get("chat_id") == chat_id:
-        await message.answer("already here")
+        await message.answer(escape_md("already here"))
         return
 
     try:
         member = await message.bot.get_chat_member(chat_id, message.bot.id)
     except Exception as exc:
-        await message.answer(escape_md(f"could not check my own rights: {exc}"), parse_mode="MarkdownV2")
+        await message.answer(escape_md(f"could not check my own rights: {exc}"))
         return
     if getattr(member, "can_manage_topics", False) is not True:
-        await message.answer("make me an admin with the manage topics right and try again")
+        await message.answer(escape_md("make me an admin with the manage topics right and try again"))
         return
 
     moved = []
@@ -63,8 +63,7 @@ async def cmd_bind(message: Message, deps: Deps) -> None:
 
     deps.state.set("chat_id", chat_id)
     await message.answer(
-        escape_md("moved:\n" + "\n".join(moved) + "\n\nrestarting, from now on we work here"),
-        parse_mode="MarkdownV2",
+        escape_md("moved:\n" + "\n".join(moved) + "\n\nrestarting, from now on we work here")
     )
     log.info("moved to chat %s, branches: %s", chat_id, len(moved))
     asyncio.get_running_loop().call_later(1.0, sys.exit, 0)

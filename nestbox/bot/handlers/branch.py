@@ -64,7 +64,6 @@ async def cmd_branch(message: Message, deps: Deps) -> None:
     body = f"{branch.title}\nagent: {branch.agent} · mode: {branch.mode}\n{branch.cwd or '-'}"
     await message.answer(
         escape_md(body),
-        parse_mode="MarkdownV2",
         reply_markup=_menu(branch.thread_id),
     )
 
@@ -74,7 +73,7 @@ async def on_rename(call: CallbackQuery, deps: Deps) -> None:
     thread_id = int(call.data.split(":")[2])
     _pending_rename[(call.message.chat.id, thread_id)] = time.monotonic()
     await call.answer()
-    await call.message.answer("send the new branch title")
+    await call.message.answer(escape_md("send the new branch title"))
 
 
 @router.callback_query(F.data.startswith("br:icons:"))
@@ -126,5 +125,5 @@ async def consume_pending(message: Message, deps: Deps, branch: Branch) -> bool:
         name=title[:128],
     )
     await deps.branches.update(branch.thread_id, title=title)
-    await message.answer("renamed")
+    await message.answer(escape_md("renamed"))
     return True
