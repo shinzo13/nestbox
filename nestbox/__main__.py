@@ -21,6 +21,7 @@ from nestbox.bot.runner import AgentRunner
 from nestbox.bot.supervisor import MainSupervisor
 from nestbox.config import load_settings
 from nestbox.core.delegation import build_orchestrator_tools
+from nestbox.core.journal import Journal
 from nestbox.core.engine.claude import ClaudeEngine
 from nestbox.core.branches import Branch, BranchStore
 from nestbox.core.registry import AgentRegistry
@@ -57,7 +58,7 @@ async def ensure_main_branch(
     await branches.add(
         Branch(
             thread_id=topic.message_thread_id,
-            agent="claude-master",
+            agent=agent,
             title="master",
             cwd=str(Path.home()),
             mode="work",
@@ -110,6 +111,7 @@ async def main() -> None:
     )
     bot.session.middleware(MarkdownFallbackMiddleware())
     registry.set_orchestrator_tools(build_orchestrator_tools(lambda: deps, lambda: bot))
+    registry.set_journal(Journal(settings.journal_dir).recent())
     dispatcher = Dispatcher()
     dispatcher["deps"] = deps
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))

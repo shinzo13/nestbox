@@ -38,6 +38,14 @@ file_id, and `uv run python -m nestbox.bigfile <file_id> [dest]` pulls it over
 mtproto with the same bot token (`TG_API_ID`/`TG_API_HASH` in `.env`, session
 in `data/mtproto-bot.session`).
 
+## Journal
+
+The orchestrator keeps a journal for itself in
+`~/.claude/journal/YYYY-MM-DD.md`. The last few days are
+loaded once at startup and appended to its system prompt, so a session does not
+begin from nothing. It is written in the first person, for its own reading —
+not a changelog.
+
 ## Names
 
 A topic is named after what it is for (`master`, `web`, `api`) while
@@ -101,6 +109,14 @@ orchestrator first. If the bot is down, `nudge` falls back to a direct alert.
 file_id, and `uv run python -m nestbox.bigfile <file_id> [dest]` pulls it over
 mtproto with the same bot token (`TG_API_ID`/`TG_API_HASH` in `.env`, session
 in `data/mtproto-bot.session`).
+
+## Journal
+
+The orchestrator keeps a journal for itself in
+`~/.claude/journal/YYYY-MM-DD.md`. The last few days are
+loaded once at startup and appended to its system prompt, so a session does not
+begin from nothing. It is written in the first person, for its own reading —
+not a changelog.
 
 ## Names
 

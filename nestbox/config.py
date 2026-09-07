@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     credentials_path: Path = Field(default=Path.home() / ".claude" / ".credentials.json")
 
     @property
+    def journal_dir(self) -> Path:
+        """The orchestrator's journal lives next to its memory, not in the repo."""
+        return Path.home() / ".claude" / "journal"
+
+    @property
     def sessions_path(self) -> Path:
         return self.data_dir / "sessions.json"
 

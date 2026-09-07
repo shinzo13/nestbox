@@ -13,6 +13,12 @@ The orchestrator's shared memory is not yours to manage; you may keep your own n
 
 Answer briefly: what was done, what matters, what broke. No walls of text, no recaps."""
 
+JOURNAL_HINT = """Your journal for the last few days. You wrote it for yourself, so that life does not start over every session:
+
+{entries}
+
+Append to it yourself when a day turns out to matter: `uv run python -c` with nestbox.core.journal.Journal, or just append to the file. Write for yourself, not as a report."""
+
 FILE_HINT = """To hand a file to the person you are talking to, put [[send:/absolute/path]] on its own line in the answer: the bot strips the line and sends the file as an attachment.
 Files sent to you arrive as a path in the message text; read them from disk."""
 
@@ -31,6 +37,7 @@ class AgentSpec:
     inherit_user_context: bool = False
     disallowed_tools: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
+    journal: str = ""
 
     @property
     def area(self) -> str:
@@ -45,6 +52,8 @@ class AgentSpec:
         if not self.inherit_user_context or self.system_prompt:
             parts.append(self.system_prompt or SUBAGENT_PROMPT.format(area=self.area))
         parts.append(FILE_HINT)
+        if self.journal:
+            parts.append(JOURNAL_HINT.format(entries=self.journal, folder=self.journal_folder or "the journal folder"))
         return {"type": "preset", "preset": "claude_code", "append": "\n\n".join(parts)}
 
     def effective_setting_sources(self) -> list[str]:
@@ -66,6 +75,7 @@ class AgentRegistry:
         self._agents = agents
         self._default = default
         self._orchestrator_extra: dict[str, Any] = {}
+        self._journal = ""
         self._by_alias = {
             alias: spec.name for spec in agents.values() for alias in spec.aliases
         }
@@ -81,6 +91,10 @@ class AgentRegistry:
         if default not in agents:
             raise ValueError(f"default agent {default!r} is not defined")
         return cls(agents, default)
+
+    def set_journal(self, text: str) -> None:
+        """Fresh journal entries go into the orchestrator's prompt at startup."""
+        self._journal = text.strip()
 
     def set_orchestrator_tools(self, server: Any, name: str = "nestbox") -> None:
         """Only the orchestrator gets the delegation handles."""
@@ -120,4 +134,5 @@ class AgentRegistry:
             inherit_user_context=branch.is_main or template.inherit_user_context,
             disallowed_tools=tools_for_mode(branch.mode),
             extra=dict(self._orchestrator_extra) if branch.is_main else {},
+            journal=self._journal if branch.is_main else "",
         )
