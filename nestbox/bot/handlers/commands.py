@@ -6,7 +6,6 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from nestbox.bot.attachments import send_attachments
 from nestbox.bot.deps import Deps
 from nestbox.bot.formatting import escape_md
 from nestbox.core.engine.base import Capability
@@ -178,5 +177,3 @@ async def cmd_btw(message: Message, command: CommandObject, deps: Deps) -> None:
         fork=True,
         persist=False,
     )
-    if outcome.attachments:
-        await send_attachments(message, outcome.attachments)

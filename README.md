@@ -70,6 +70,70 @@ itself, so a reply is always a single message.
 The bot only answers `OWNER_ID`. Agents run with `bypassPermissions` by default;
 override per agent in `config/agents.toml`.
 
+## How a run looks
+
+The branch topic shows a plain `typing…` status while the agent works, and
+every block of text the agent finishes is sent right away as its own message —
+so a quick "hang on" arrives before the work is done. The run summary
+(`✅ claude-master · 1m19s · 15 tool calls`) is appended to the last of them.
+
+Tool calls do not clutter the branch: they go to the group's common channel as
+one rich message, `<agent>'s toolcalls`, with the list folded into a details
+block and updated as the run goes. If the chat refuses rich messages, the log
+is dropped and the run continues.
+
+## Delegation
+
+The orchestrator carries an in-process MCP server (`nestbox/core/delegation.py`)
+with `agents`, `delegate`, `new_branch` and `drop_branch`. `delegate` runs the
+task in the target branch through the same runner, so the exchange shows up in
+that branch's topic and the report comes back to the orchestrator.
+
+Outside events reach the orchestrator through `data/events`: `bin/nudge <text>`
+drops a file there, `EventPump` picks it up and turns it into a run in the
+orchestrator's branch. Cron watchers (a container watcher, a log watcher)
+use it instead of messaging the owner, so a container problem lands on the
+orchestrator first. If the bot is down, `nudge` falls back to a direct alert.
+
+## Big files
+
+`getFile` stops at 20 MB. Anything larger is reported into the prompt with its
+file_id, and `uv run python -m nestbox.bigfile <file_id> [dest]` pulls it over
+mtproto with the same bot token (`TG_API_ID`/`TG_API_HASH` in `.env`, session
+in `data/mtproto-bot.session`).
+
+## Names
+
+A topic is named after what it is for (`master`, `web`, `api`) while
+the agent behind it is `claude-<that>`: `claude-master`, `claude-web`. Older
+names stay as aliases so the toml keeps resolving them.
+
+## Commands
+
+| command | what it does |
+| --- | --- |
+| `/agent <name>` | switch the current topic to another agent |
+| `/agents` | list configured agents |
+| `/new` | start a fresh session in this topic |
+| `/btw <question>` | side question on a forked session, main branch untouched |
+| `/usage` | remaining subscription limits |
+| `/sessions` | active topics |
+| `/stop` | cancel the running task |
+
+## Setup
+
+```bash
+uv sync
+cp .env.example .env   # BOT_TOKEN, OWNER_ID
+uv run python -m nestbox
+```
+
+The run summary (`✅ claude-master · 1m19s · 15 tool calls`) is appended to the answer
+itself, so a reply is always a single message.
+
+The bot only answers `OWNER_ID`. Agents run with `bypassPermissions` by default;
+override per agent in `config/agents.toml`.
+
 ## One message per run
 
 A run starts by posting `⏳ claude-master is working…`, which lists the tools as they are

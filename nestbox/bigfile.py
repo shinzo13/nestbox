@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
 from telethon import TelegramClient
@@ -17,18 +18,30 @@ from telethon.utils import resolve_bot_file_id
 from nestbox.config import load_settings
 
 
-async def fetch(file_id: str, dest: Path) -> Path:
+async def fetch(ref: str, dest: Path) -> Path:
+    """ref is either a message_id in the working chat or a file_id from an update."""
     settings = load_settings()
     if not settings.tg_api_id or not settings.tg_api_hash:
         raise SystemExit("TG_API_ID/TG_API_HASH missing from .env")
-    media = resolve_bot_file_id(file_id)
-    if media is None:
-        raise SystemExit("could not resolve the file_id into a document")
+
+    media: object | None = None
+    message_id = int(ref) if ref.lstrip("-").isdigit() else None
+    if message_id is None:
+        # telethon cannot parse every file_id, so message_id is the main path
+        media = resolve_bot_file_id(ref)
+        if media is None:
+            raise SystemExit("could not parse the file_id: forward the file again and use its message_id")
 
     session = str(settings.data_dir / "mtproto-bot")
     client = TelegramClient(session, settings.tg_api_id, settings.tg_api_hash)
     await client.start(bot_token=settings.bot_token)
     try:
+        if media is None:
+            state = json.loads((settings.state_path).read_text(encoding="utf-8") or "{}")
+            chat_id = state.get("chat_id") or settings.chat_id or settings.owner_id
+            media = await client.get_messages(chat_id, ids=message_id)
+            if media is None:
+                raise SystemExit("no such message")
         if dest.is_dir():
             dest = dest / getattr(media, "id", "download").__str__()
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -42,10 +55,10 @@ async def fetch(file_id: str, dest: Path) -> Path:
 
 def cli() -> None:
     parser = argparse.ArgumentParser(prog="bigfile", description="download an attachment over mtproto")
-    parser.add_argument("file_id")
+    parser.add_argument("ref", help="message_id or file_id")
     parser.add_argument("dest", nargs="?", default="./data/inbox", help="file or directory")
     args = parser.parse_args()
-    path = asyncio.run(fetch(args.file_id, Path(args.dest)))
+    path = asyncio.run(fetch(args.ref, Path(args.dest)))
     print(path)
 
 

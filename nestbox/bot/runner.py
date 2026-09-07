@@ -9,14 +9,14 @@ from aiogram.exceptions import TelegramBadRequest
 
 from nestbox.bot.formatting import (
     MARKDOWN_LIMIT,
-    TELEGRAM_LIMIT,
     escape_md,
     extract_attachments,
     human_duration,
     split_message,
 )
 from nestbox.bot.markdown import to_telegram_markdown
-from nestbox.bot.preview import LivePreview
+from nestbox.bot.attachments import send_attachments
+from nestbox.bot.preview import ReplyStream
 from nestbox.core.engine.base import (
     Engine,
     LiveSession,
@@ -151,8 +151,8 @@ class AgentRunner:
         persist: bool = True,
     ) -> RunOutcome:
         key = SessionStore.key(chat_id, thread_id)
-        preview = LivePreview(bot, chat_id, thread_id)
-        await preview.start(spec.name)
+        stream = ReplyStream(bot, chat_id, thread_id, spec.name)
+        await stream.start()
 
         handle = None if fork else self._live.get(key)
         if handle is not None and handle.agent == spec.name:
@@ -177,10 +177,15 @@ class AgentRunner:
                 elif isinstance(event, ToolStarted):
                     label = f"{event.name}: {event.summary}" if event.summary else event.name
                     outcome.tools.append(event.name)
-                    preview.tool(label)
-                    await preview.flush()
+                    stream.tool(label)
+                    await stream.flush()
                 elif isinstance(event, TextChunk):
                     texts.append(event.text)
+                    chunks, attachments = render_block(event.text)
+                    await stream.say(chunks)
+                    if attachments:
+                        outcome.attachments.extend(attachments)
+                        await send_attachments(bot, chat_id, thread_id, attachments)
                 elif isinstance(event, RateLimitWarning):
                     outcome.rate_limit = event
                 elif isinstance(event, Finished):
@@ -189,12 +194,17 @@ class AgentRunner:
                     outcome.duration_ms = event.duration_ms
                     if event.is_error:
                         outcome.error = event.text or "run failed"
-                    elif event.text:
+                    elif event.text and event.text not in texts:
                         texts.append(event.text)
+                        chunks, attachments = render_block(event.text)
+                        await stream.say(chunks)
+                        if attachments:
+                            outcome.attachments.extend(attachments)
+                            await send_attachments(bot, chat_id, thread_id, attachments)
                 elif isinstance(event, Failed):
                     outcome.error = event.message
         except asyncio.CancelledError:
-            await preview.fail("⛔ stopped")
+            await stream.fail("⛔ stopped")
             raise
         finally:
             self._active.pop(key, None)
@@ -203,21 +213,20 @@ class AgentRunner:
 
         outcome.text = self._pick_text(texts)
         outcome.summary = self._summary_line(spec.name, outcome)
-        chunks, outcome.attachments = render_reply(outcome)
-        await preview.finish(chunks)
+        if outcome.error:
+            await stream.say([escape_md(f"⚠️ {outcome.error}")])
+        await stream.finish(outcome.summary)
         return outcome
 
     @staticmethod
     def _pick_text(texts: list[str]) -> str | None:
-        cleaned = [text.strip() for text in texts if text and text.strip()]
-        if not cleaned:
-            return None
-        last = cleaned[-1]
-        for candidate in reversed(cleaned[:-1]):
-            if candidate == last:
-                continue
-            break
-        return last
+        """The report to the orchestrator is everything the agent said, not only its last line."""
+        cleaned: list[str] = []
+        for text in texts:
+            stripped = (text or "").strip()
+            if stripped and stripped not in cleaned:
+                cleaned.append(stripped)
+        return "\n\n".join(cleaned) or None
 
     @staticmethod
     def _summary_line(agent: str, outcome: RunOutcome) -> str:
@@ -232,26 +241,10 @@ class AgentRunner:
         return " · ".join(parts)
 
 
-def append_summary(chunks: list[str], summary: str | None) -> list[str]:
-    """The run summary lives at the tail of the answer, not as a message before it."""
-    if not summary:
-        return chunks
-    tail = f"_{escape_md(summary)}_"
-    if chunks and len(chunks[-1]) + len(tail) + 2 <= TELEGRAM_LIMIT:
-        chunks[-1] = f"{chunks[-1]}\n\n{tail}"
-    else:
-        chunks.append(tail)
-    return chunks
-
-
-def render_reply(outcome: RunOutcome) -> tuple[list[str], list[str]]:
-    if outcome.error:
-        chunks = split_message(escape_md(f"⚠️ {outcome.error}"))
-        return append_summary(chunks, outcome.summary), []
-    if not outcome.text:
-        return append_summary(split_message(escape_md("(empty answer)")), outcome.summary), []
-    text, attachments = extract_attachments(outcome.text)
-    if not text:
-        text = "done"
+def render_block(raw: str) -> tuple[list[str], list[str]]:
+    """A chunk of the agent's answer: MarkdownV2 markup plus extracted attachments."""
+    text, attachments = extract_attachments(raw)
+    if not text.strip():
+        return [], attachments
     chunks = [to_telegram_markdown(chunk) for chunk in split_message(text, MARKDOWN_LIMIT)]
-    return append_summary(chunks, outcome.summary), attachments
+    return chunks, attachments

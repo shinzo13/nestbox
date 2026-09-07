@@ -38,11 +38,11 @@ def _human_size(size: int | None) -> str:
     return f"{size / 1024 / 1024:.1f} MB"
 
 
-def _too_big(label: str, size: int | None, file_id: str) -> str:
+def _too_big(label: str, size: int | None, message_id: int) -> str:
     """The Bot API will not hand this file over, but mtproto will."""
     return (
         f"{label} ({_human_size(size)}) is over the Bot API limit, fetch it over mtproto: "
-        f"`uv run python -m nestbox.bigfile {file_id}` from the bot's directory"
+        f"`uv run python -m nestbox.bigfile {message_id}` from the bot's directory"
     )
 
 
@@ -53,7 +53,7 @@ async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list
     for file_id, name, size in _candidates(message):
         label = name or "file"
         if size is not None and size > BOT_API_LIMIT:
-            skipped.append(_too_big(label, size, file_id))
+            skipped.append(_too_big(label, size, message.message_id))
             continue
         try:
             info = await message.bot.get_file(file_id)
@@ -64,7 +64,7 @@ async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list
         except TelegramBadRequest as exc:
             log.warning("attachment %s failed to download: %s", label, exc)
             if "too big" in exc.message.lower():
-                skipped.append(_too_big(label, size, file_id))
+                skipped.append(_too_big(label, size, message.message_id))
             else:
                 skipped.append(f"{label} ({_human_size(size)}): telegram refused: {exc.message}")
             continue
@@ -72,7 +72,9 @@ async def save_incoming(message: Message, inbox: Path) -> tuple[list[Path], list
     return saved, skipped
 
 
-async def send_attachments(message: Message, paths: list[str]) -> list[str]:
+async def send_attachments(
+    bot, chat_id: int, thread_id: int | None, paths: list[str]
+) -> list[str]:
     """Returns the paths that could not be sent."""
     from aiogram.types import FSInputFile
 
@@ -84,7 +86,7 @@ async def send_attachments(message: Message, paths: list[str]) -> list[str]:
             continue
         document = FSInputFile(path)
         if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
-            await message.answer_photo(document)
+            await bot.send_photo(chat_id=chat_id, message_thread_id=thread_id, photo=document)
         else:
-            await message.answer_document(document)
+            await bot.send_document(chat_id=chat_id, message_thread_id=thread_id, document=document)
     return failed

@@ -2,9 +2,10 @@ import asyncio
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import SendRichMessage
 
-from nestbox.bot.preview import LivePreview
-from nestbox.bot.runner import RunOutcome, append_summary, render_reply
+from nestbox.bot.preview import ReplyStream
+from nestbox.bot.runner import render_block
 
 
 class FakeMessage:
@@ -13,142 +14,98 @@ class FakeMessage:
 
 
 class FakeBot:
-    def __init__(self) -> None:
-        self.sent: list[str] = []
-        self.edits: list[str] = []
-        self.deleted: list[int] = []
+    def __init__(self, rich_error: bool = False) -> None:
+        self.sent: list[tuple[int | None, str]] = []
+        self.edits: list[tuple[int, str | None]] = []
+        self.rich: list[str] = []
+        self.actions: list[str] = []
+        self._rich_error = rich_error
+        self._ids = 0
 
-    async def send_message(self, *, text, **kwargs):
-        self.sent.append(text)
-        return FakeMessage(len(self.sent))
+    async def __call__(self, method):
+        assert isinstance(method, SendRichMessage)
+        if self._rich_error:
+            raise TelegramBadRequest(method=method, message="rich messages are unavailable")
+        self.rich.append(method.rich_message.blocks[0].text)
+        self._ids += 1
+        return FakeMessage(1000 + self._ids)
 
-    async def edit_message_text(self, *, text, **kwargs):
-        self.edits.append(text)
+    async def send_message(self, *, text, message_thread_id=None, **kwargs):
+        self.sent.append((message_thread_id, text))
+        self._ids += 1
+        return FakeMessage(self._ids)
 
-    async def delete_message(self, *, chat_id, message_id):
-        self.deleted.append(message_id)
+    async def edit_message_text(self, *, message_id, text=None, rich_message=None, **kwargs):
+        self.edits.append((message_id, text))
+
+    async def send_chat_action(self, *, action, **kwargs):
+        self.actions.append(action)
 
 
 def run(coro):
     return asyncio.run(coro)
 
 
-def test_placeholder_turns_into_the_answer():
+def test_each_block_goes_out_as_its_own_message():
     bot = FakeBot()
-    preview = LivePreview(bot, -1001234567890, 23)
+    stream = ReplyStream(bot, -100, 23, "claude-master")
 
     async def scenario():
-        await preview.start("master")
-        preview.tool("Bash: git log")
-        await preview.flush(force=True)
-        await preview.finish(["done"])
+        await stream.start()
+        await stream.say(["on it"])
+        await stream.say(["done"])
+        await stream.finish("✅ claude-master · 3s")
 
     run(scenario())
-    assert len(bot.sent) == 1
-    assert bot.sent[0].startswith("⏳ master")
-    assert "Bash: git log" in bot.edits[0].replace("\\", "")
-    assert bot.edits[-1] == "done"
-    assert bot.deleted == []
+    assert [text for _, text in bot.sent] == ["on it", "done"]
+    assert bot.edits[-1][1].endswith("_✅ claude\\-master · 3s_")
+    assert bot.actions == ["typing"]
 
 
-def test_long_answer_spills_into_extra_messages():
+def test_toolcalls_land_in_the_common_channel():
     bot = FakeBot()
-    preview = LivePreview(bot, -1001234567890, 23)
+    stream = ReplyStream(bot, -100, 23, "claude-master")
 
     async def scenario():
-        await preview.start("master")
-        await preview.finish(["first", "second"])
+        stream.tool("Bash: git log")
+        await stream.flush(force=True)
+        stream.tool("Read: main.py")
+        await stream.flush(force=True)
 
     run(scenario())
-    assert bot.edits[-1] == "first"
-    assert bot.sent[-1] == "second"
+    assert bot.rich == ["claude-master's toolcalls"]
+    assert bot.edits and bot.edits[-1][1] is None
+    assert all(thread is None for thread, _ in bot.sent)
 
 
-def test_stop_note_replaces_the_placeholder():
-    bot = FakeBot()
-    preview = LivePreview(bot, -1001234567890, 23)
+def test_rich_failure_does_not_kill_the_run():
+    bot = FakeBot(rich_error=True)
+    stream = ReplyStream(bot, -100, 23, "claude-master")
 
     async def scenario():
-        await preview.start("master")
-        await preview.fail("⛔ stopped")
+        stream.tool("Bash: ls")
+        await stream.flush(force=True)
+        await stream.flush(force=True)
+        await stream.say(["answer"])
 
     run(scenario())
-    assert len(bot.sent) == 1
-    assert bot.edits[-1] == "⛔ stopped"
+    assert [text for _, text in bot.sent] == ["answer"]
 
 
-@pytest.mark.parametrize("summary", [None, ""])
-def test_append_summary_noop(summary):
-    assert append_summary(["text"], summary) == ["text"]
+def test_summary_becomes_its_own_message_when_nothing_was_said():
+    bot = FakeBot()
+    stream = ReplyStream(bot, -100, 23, "claude-master")
+    run(stream.finish("✅ claude-master · 1s"))
+    assert bot.sent[-1][1] == "_✅ claude\\-master · 1s_"
 
 
-def test_append_summary_goes_to_the_tail():
-    chunks = append_summary(["text"], "✅ main · 3s")
-    assert len(chunks) == 1
-    assert chunks[0].startswith("text")
-    assert chunks[0].endswith("_✅ main · 3s_")
-
-
-def test_append_summary_spills_into_new_chunk():
-    chunks = append_summary(["x" * 4090], "✅ main · 3s")
-    assert len(chunks) == 2
-    assert chunks[1] == "_✅ main · 3s_"
-
-
-def test_render_reply_keeps_attachments_and_summary():
-    outcome = RunOutcome(text="here\n[[send:/tmp/a.txt]]", summary="✅ main · 3s")
-    chunks, attachments = render_reply(outcome)
+def test_render_block_splits_markup_and_attachments():
+    chunks, attachments = render_block("**bold**\n[[send:/tmp/a.txt]]")
+    assert chunks == ["*bold*"]
     assert attachments == ["/tmp/a.txt"]
-    assert chunks[-1].endswith("_✅ main · 3s_")
 
 
-def test_render_reply_marks_errors():
-    chunks, _ = render_reply(RunOutcome(error="boom", summary="⚠️ main · 3s"))
-    assert "boom" in chunks[0]
-    assert chunks[-1].endswith("_⚠️ main · 3s_")
-
-
-def test_render_reply_renders_markdown():
-    outcome = RunOutcome(text="**bold** and `code-1`", summary="✅ main · 3s")
-    chunks, _ = render_reply(outcome)
-    assert chunks[0].startswith("*bold* and `code-1`")
-
-
-def test_strip_md_escapes_restores_plain_text():
-    from nestbox.bot.formatting import escape_md, strip_md_escapes
-
-    original = "total: 1-2 (three). once_more!"
-    assert strip_md_escapes(escape_md(original)) == original
-
-
-def test_markdown_fallback_retries_without_parse_mode():
-    from aiogram.methods import SendMessage
-
-    from nestbox.bot.middlewares import MarkdownFallbackMiddleware
-
-    calls: list[SendMessage] = []
-
-    async def make_request(bot, method):
-        calls.append(method)
-        if len(calls) == 1:
-            raise TelegramBadRequest(method=method, message="can't parse entities: bad offset")
-        return "sent"
-
-    method = SendMessage(chat_id=1, text="a\\-b", parse_mode="MarkdownV2")
-    result = run(MarkdownFallbackMiddleware()(make_request, None, method))
-    assert result == "sent"
-    assert calls[1].text == "a-b"
-    assert calls[1].parse_mode is None
-
-
-def test_markdown_fallback_reraises_other_errors():
-    from aiogram.methods import SendMessage
-
-    from nestbox.bot.middlewares import MarkdownFallbackMiddleware
-
-    async def make_request(bot, method):
-        raise TelegramBadRequest(method=method, message="chat not found")
-
-    method = SendMessage(chat_id=1, text="hi", parse_mode="MarkdownV2")
-    with pytest.raises(TelegramBadRequest):
-        run(MarkdownFallbackMiddleware()(make_request, None, method))
+@pytest.mark.parametrize("raw", ["", "   ", "[[send:/tmp/a.txt]]"])
+def test_render_block_without_text(raw):
+    chunks, _ = render_block(raw)
+    assert chunks == []

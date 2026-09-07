@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram import Router
 from aiogram.types import Message
 
-from nestbox.bot.attachments import save_incoming, send_attachments
+from nestbox.bot.attachments import save_incoming
 from nestbox.bot.formatting import escape_md
 from nestbox.bot.deps import Deps
 from nestbox.bot.handlers.branch import consume_pending
@@ -57,7 +57,5 @@ async def handle_message(message: Message, deps: Deps) -> None:
         resume_session=record.session_id if record else None,
     )
 
-    if outcome.attachments:
-        await send_attachments(message, outcome.attachments)
 
     await deps.maybe_warn_usage(message)
