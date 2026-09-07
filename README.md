@@ -14,7 +14,11 @@ working; only the transport is ours.
 - `nestbox/core/registry.py` — agents defined in `config/agents.toml`, not in code.
 - `nestbox/core/sessions.py` — topic to session mapping, JSON on disk.
 - `nestbox/core/usage.py` — subscription limits via the OAuth usage endpoint.
-- `nestbox/bot/` — aiogram layer: handlers, progress reporting, formatting.
+- `nestbox/bot/` — aiogram layer: handlers, live preview, formatting.
+- `nestbox/bot/preview.py` — what the answer looks like while it is being written:
+  `sendMessageDraft` in private chats, an edited message everywhere else.
+  Turn it off with `STREAM_REPLIES=0` and the preview falls back to the old
+  list of tool calls.
 
 ## Commands
 
@@ -36,12 +40,25 @@ cp .env.example .env   # BOT_TOKEN, OWNER_ID
 uv run python -m nestbox
 ```
 
+The run summary (`✅ main · 1m19s · 15 tool calls`) is appended to the answer
+itself, so a reply is always a single message.
+
 The bot only answers `OWNER_ID`. Agents run with `bypassPermissions` by default;
 override per agent in `config/agents.toml`.
+
+## Streaming replies
+
+`STREAM_REPLIES=1` (default) streams the answer as it is generated: partial text
+is pushed into a live preview, which disappears once the final message is sent.
+Private chats use `sendMessageDraft`; groups fall back to editing a placeholder
+message, since Telegram rejects drafts outside private chats. Set
+`STREAM_REPLIES=0` and restart to get the old behaviour (tool list only).
+
+The run summary (`✅ main · 1m19s · 15 tool calls`) is appended to the end of the
+reply instead of being sent as a separate message before it.
 
 ## Known gaps
 
 - Replies are escaped as plain MarkdownV2 text, so model markdown (code blocks,
   bold) is not rendered yet.
-- `/wake` and `/sleep` for long-lived background sessions are not implemented.
-- No git operations, no file uploads, no attachment handling yet.
+- Streaming in groups relies on message edits, so it updates every 3s, not live.

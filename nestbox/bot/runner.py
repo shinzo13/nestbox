@@ -8,16 +8,19 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 
 from nestbox.bot.formatting import (
+    TELEGRAM_LIMIT,
     escape_md,
     extract_attachments,
     human_duration,
     split_message,
 )
+from nestbox.bot.preview import LivePreview
 from nestbox.core.engine.base import (
     Engine,
     LiveSession,
     Failed,
     Finished,
+    PartialText,
     RateLimitWarning,
     RunRequest,
     SessionStarted,
@@ -27,8 +30,6 @@ from nestbox.core.engine.base import (
 from nestbox.core.registry import AgentSpec
 from nestbox.core.sessions import SessionStore
 
-PROGRESS_INTERVAL = 3.0
-MAX_PROGRESS_LINES = 6
 IDLE_SLEEP_AFTER = 1800.0
 JANITOR_INTERVAL = 60.0
 
@@ -42,65 +43,7 @@ class RunOutcome:
     error: str | None = None
     rate_limit: RateLimitWarning | None = None
     tools: list[str] = field(default_factory=list)
-
-
-class ProgressReporter:
-    def __init__(self, bot: Bot, chat_id: int, thread_id: int | None) -> None:
-        self._bot = bot
-        self._chat_id = chat_id
-        self._thread_id = thread_id
-        self._message_id: int | None = None
-        self._lines: list[str] = []
-        self._last_edit = 0.0
-        self._last_payload = ""
-
-    async def start(self, agent: str) -> None:
-        message = await self._bot.send_message(
-            chat_id=self._chat_id,
-            message_thread_id=self._thread_id,
-            text=escape_md(f"⏳ {agent} is working…"),
-            parse_mode="MarkdownV2",
-        )
-        self._message_id = message.message_id
-
-    def add(self, line: str) -> None:
-        self._lines.append(line)
-        del self._lines[:-MAX_PROGRESS_LINES]
-
-    async def flush(self, agent: str, force: bool = False) -> None:
-        if self._message_id is None:
-            return
-        now = time.monotonic()
-        if not force and now - self._last_edit < PROGRESS_INTERVAL:
-            return
-        body = "\n".join(f"· {line}" for line in self._lines)
-        payload = escape_md(f"⏳ {agent} is working…\n{body}".strip())
-        if payload == self._last_payload:
-            return
-        self._last_edit = now
-        self._last_payload = payload
-        try:
-            await self._bot.edit_message_text(
-                chat_id=self._chat_id,
-                message_id=self._message_id,
-                text=payload,
-                parse_mode="MarkdownV2",
-            )
-        except TelegramBadRequest:
-            pass
-
-    async def finish(self, summary: str) -> None:
-        if self._message_id is None:
-            return
-        try:
-            await self._bot.edit_message_text(
-                chat_id=self._chat_id,
-                message_id=self._message_id,
-                text=escape_md(summary),
-                parse_mode="MarkdownV2",
-            )
-        except TelegramBadRequest:
-            pass
+    summary: str | None = None
 
 
 @dataclass(slots=True)
@@ -112,9 +55,10 @@ class LiveHandle:
 
 
 class AgentRunner:
-    def __init__(self, engine: Engine, store: SessionStore) -> None:
+    def __init__(self, engine: Engine, store: SessionStore, stream: bool = False) -> None:
         self._engine = engine
         self._store = store
+        self._stream = stream
         self._active: dict[str, asyncio.Task] = {}
         self._live: dict[str, LiveHandle] = {}
         self._janitor: asyncio.Task | None = None
@@ -176,9 +120,8 @@ class AgentRunner:
             for key in stale:
                 await self.sleep(key)
 
-    @staticmethod
     def _build_request(
-        prompt: str, spec: AgentSpec, resume_session: str | None, fork: bool = False
+        self, prompt: str, spec: AgentSpec, resume_session: str | None, fork: bool = False
     ) -> RunRequest:
         return RunRequest(
             prompt=prompt,
@@ -191,6 +134,7 @@ class AgentRunner:
             skills=spec.skills,
             setting_sources=spec.effective_setting_sources(),
             disallowed_tools=spec.disallowed_tools,
+            stream=self._stream,
         )
 
     async def run(
@@ -206,16 +150,16 @@ class AgentRunner:
         persist: bool = True,
     ) -> RunOutcome:
         key = SessionStore.key(chat_id, thread_id)
-        reporter = ProgressReporter(bot, chat_id, thread_id)
-        await reporter.start(spec.name)
+        preview = LivePreview(bot, chat_id, thread_id, stream=self._stream)
+        await preview.start(spec.name)
 
         handle = None if fork else self._live.get(key)
         if handle is not None and handle.agent == spec.name:
             handle.touched_at = time.monotonic()
-            stream = handle.session.send(prompt)
+            events = handle.session.send(prompt)
         else:
             handle = None
-            stream = self._engine.run(self._build_request(prompt, spec, resume_session, fork))
+            events = self._engine.run(self._build_request(prompt, spec, resume_session, fork))
 
         outcome = RunOutcome()
         texts: list[str] = []
@@ -224,7 +168,7 @@ class AgentRunner:
             self._active[key] = task
 
         try:
-            async for event in stream:
+            async for event in events:
                 if isinstance(event, SessionStarted):
                     outcome.session_id = event.session_id
                     if persist:
@@ -232,8 +176,12 @@ class AgentRunner:
                 elif isinstance(event, ToolStarted):
                     label = f"{event.name}: {event.summary}" if event.summary else event.name
                     outcome.tools.append(event.name)
-                    reporter.add(label)
-                    await reporter.flush(spec.name)
+                    preview.block_done()
+                    preview.tool(label)
+                    await preview.flush()
+                elif isinstance(event, PartialText):
+                    preview.partial(event.text)
+                    await preview.flush()
                 elif isinstance(event, TextChunk):
                     texts.append(event.text)
                 elif isinstance(event, RateLimitWarning):
@@ -249,7 +197,7 @@ class AgentRunner:
                 elif isinstance(event, Failed):
                     outcome.error = event.message
         except asyncio.CancelledError:
-            await reporter.finish("⛔ stopped")
+            await preview.close("⛔ stopped")
             raise
         finally:
             self._active.pop(key, None)
@@ -257,8 +205,8 @@ class AgentRunner:
                 handle.touched_at = time.monotonic()
 
         outcome.text = self._pick_text(texts)
-        summary = self._summary_line(spec.name, outcome)
-        await reporter.finish(summary)
+        outcome.summary = self._summary_line(spec.name, outcome)
+        await preview.close()
         return outcome
 
     @staticmethod
@@ -286,12 +234,26 @@ class AgentRunner:
         return " · ".join(parts)
 
 
+def append_summary(chunks: list[str], summary: str | None) -> list[str]:
+    """The run summary lives at the tail of the answer, not as a message before it."""
+    if not summary:
+        return chunks
+    tail = f"_{escape_md(summary)}_"
+    if chunks and len(chunks[-1]) + len(tail) + 2 <= TELEGRAM_LIMIT:
+        chunks[-1] = f"{chunks[-1]}\n\n{tail}"
+    else:
+        chunks.append(tail)
+    return chunks
+
+
 def render_reply(outcome: RunOutcome) -> tuple[list[str], list[str]]:
     if outcome.error:
-        return split_message(escape_md(f"⚠️ {outcome.error}")), []
+        chunks = split_message(escape_md(f"⚠️ {outcome.error}"))
+        return append_summary(chunks, outcome.summary), []
     if not outcome.text:
-        return split_message(escape_md("(empty answer)")), []
+        return append_summary(split_message(escape_md("(empty answer)")), outcome.summary), []
     text, attachments = extract_attachments(outcome.text)
     if not text:
         text = "done"
-    return [escape_md(chunk) for chunk in split_message(text)], attachments
+    chunks = [escape_md(chunk) for chunk in split_message(text)]
+    return append_summary(chunks, outcome.summary), attachments

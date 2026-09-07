@@ -79,7 +79,7 @@ async def main() -> None:
     state = State(settings.state_path)
     chat_id = state.get("chat_id") or settings.chat_id or settings.owner_id
     engine = ClaudeEngine()
-    runner = AgentRunner(engine, sessions)
+    runner = AgentRunner(engine, sessions, stream=settings.stream_replies)
     deps = Deps(
         registry=registry,
         sessions=sessions,

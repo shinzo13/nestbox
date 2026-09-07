@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("./data"))
     agents_config: Path = Field(default=Path("./config/agents.toml"))
 
+    stream_replies: bool = True
     usage_warn_threshold: int = 80
     credentials_path: Path = Field(default=Path.home() / ".claude" / ".credentials.json")
 
