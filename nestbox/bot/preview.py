@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -18,7 +20,10 @@ from nestbox.bot.formatting import TELEGRAM_LIMIT, escape_md
 
 TYPING_INTERVAL = 4.0
 LOG_INTERVAL = 3.0
-MAX_LOG_LINES = 40
+MAX_LOG_LINES = 60
+THOUGHT_LIMIT = 400
+LOG_BODY_LIMIT = 3500
+OWNER_TZ = ZoneInfo("UTC")
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +43,9 @@ class ReplyStream:
         self._agent = agent
         self._typing: asyncio.Task | None = None
         self._log_id: int | None = None
-        self._tools: list[str] = []
+        self._entries: list[str] = []
+        self._tools = 0
+        self._started = datetime.now(OWNER_TZ)
         self._last_reply_id: int | None = None
         self._last_reply_text = ""
         self._last_log_edit = 0.0
@@ -65,25 +72,41 @@ class ReplyStream:
             await self._type()
 
     def tool(self, label: str) -> None:
-        self._tools.append(label)
-        del self._tools[:-MAX_LOG_LINES]
+        self._tools += 1
+        self._add(f"→ {label}")
+
+    def think(self, text: str) -> None:
+        """Thinking and calls share one feed, so the real order is visible."""
+        thought = " ".join(text.split())
+        if not thought:
+            return
+        if len(thought) > THOUGHT_LIMIT:
+            thought = thought[:THOUGHT_LIMIT] + "…"
+        self._add(f"💭 {thought}")
+
+    def _add(self, line: str) -> None:
+        self._entries.append(line)
+        del self._entries[:-MAX_LOG_LINES]
 
     def _rich(self) -> InputRichMessage:
-        body = "\n".join(f"{n}. {line}" for n, line in enumerate(self._tools, 1))
-        blocks: list[object] = [InputRichBlockParagraph(text=f"{self._agent}'s toolcalls")]
+        body = "\n\n".join(self._entries)
+        if len(body) > LOG_BODY_LIMIT:
+            body = "…\n\n" + body[-LOG_BODY_LIMIT:]
+        title = f"{self._agent} {self._started.strftime('%H:%M')}"
+        blocks: list[object] = [InputRichBlockParagraph(text=title)]
         if body:
             blocks.append(
                 InputRichBlockDetails(
-                    summary=f"{len(self._tools)} calls",
+                    summary=f"{self._tools} calls",
                     is_open=False,
-                    blocks=[InputRichBlockPreformatted(text=body[:3500])],
+                    blocks=[InputRichBlockPreformatted(text=body)],
                 )
             )
         return InputRichMessage(blocks=blocks)
 
     async def flush(self, force: bool = False) -> None:
         """The tool call log lives in the common channel, not in the agent's branch."""
-        if self._log_failed or not self._tools:
+        if self._log_failed or not self._entries:
             return
         now = time.monotonic()
         if not force and now - self._last_log_edit < LOG_INTERVAL:

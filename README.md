@@ -78,9 +78,9 @@ so a quick "hang on" arrives before the work is done. The run summary
 (`✅ claude-master · 1m19s · 15 tool calls`) is appended to the last of them.
 
 Tool calls do not clutter the branch: they go to the group's common channel as
-one rich message, `<agent>'s toolcalls`, with the list folded into a details
-block and updated as the run goes. If the chat refuses rich messages, the log
-is dropped and the run continues.
+one rich message titled `<agent> HH:MM`, with a details block holding the run's
+thinking and its tool calls in the order they actually happened. If the chat
+refuses rich messages, the log is dropped and the run continues.
 
 ## Delegation
 

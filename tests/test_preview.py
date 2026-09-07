@@ -73,9 +73,19 @@ def test_toolcalls_land_in_the_common_channel():
         await stream.flush(force=True)
 
     run(scenario())
-    assert bot.rich == ["claude-master's toolcalls"]
+    assert bot.rich and bot.rich[0].startswith("claude-master ")
     assert bot.edits and bot.edits[-1][1] is None
     assert all(thread is None for thread, _ in bot.sent)
+
+
+def test_log_keeps_thoughts_and_calls_in_order():
+    bot = FakeBot()
+    stream = ReplyStream(bot, -100, 23, "claude-master")
+    stream.think("need to check the logs")
+    stream.tool("Bash: docker logs")
+    stream.think("no errors")
+    body = stream._rich().blocks[1].blocks[0].text
+    assert body.splitlines()[0::2] == ["💭 need to check the logs", "→ Bash: docker logs", "💭 no errors"]
 
 
 def test_rich_failure_does_not_kill_the_run():

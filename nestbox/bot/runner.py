@@ -26,6 +26,7 @@ from nestbox.core.engine.base import (
     RunRequest,
     SessionStarted,
     TextChunk,
+    ThinkingChunk,
     ToolStarted,
 )
 from nestbox.core.registry import AgentSpec
@@ -178,6 +179,9 @@ class AgentRunner:
                     label = f"{event.name}: {event.summary}" if event.summary else event.name
                     outcome.tools.append(event.name)
                     stream.tool(label)
+                    await stream.flush()
+                elif isinstance(event, ThinkingChunk):
+                    stream.think(event.text)
                     await stream.flush()
                 elif isinstance(event, TextChunk):
                     texts.append(event.text)
