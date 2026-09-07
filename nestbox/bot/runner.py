@@ -212,10 +212,12 @@ class AgentRunner:
                 handle.touched_at = time.monotonic()
 
         outcome.text = self._pick_text(texts)
-        outcome.summary = self._summary_line(spec.name, outcome)
+        head = self._summary_line(spec.name, outcome)
+        tools = len(outcome.tools)
+        outcome.summary = f"{head} · {tools} tool calls" if tools else head
         if outcome.error:
             await stream.say([escape_md(f"⚠️ {outcome.error}")])
-        await stream.finish(outcome.summary)
+        await stream.finish(head, tools)
         return outcome
 
     @staticmethod
@@ -236,8 +238,6 @@ class AgentRunner:
         duration = human_duration(outcome.duration_ms)
         if duration:
             parts.append(duration)
-        if outcome.tools:
-            parts.append(f"{len(outcome.tools)} tool calls")
         return " · ".join(parts)
 
 

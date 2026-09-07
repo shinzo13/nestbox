@@ -54,7 +54,7 @@ def test_each_block_goes_out_as_its_own_message():
         await stream.start()
         await stream.say(["on it"])
         await stream.say(["done"])
-        await stream.finish("✅ claude-master · 3s")
+        await stream.finish("✅ claude-master · 3s", tools=0)
 
     run(scenario())
     assert [text for _, text in bot.sent] == ["on it", "done"]
@@ -95,8 +95,37 @@ def test_rich_failure_does_not_kill_the_run():
 def test_summary_becomes_its_own_message_when_nothing_was_said():
     bot = FakeBot()
     stream = ReplyStream(bot, -100, 23, "claude-master")
-    run(stream.finish("✅ claude-master · 1s"))
+    run(stream.finish("✅ claude-master · 1s", tools=0))
     assert bot.sent[-1][1] == "_✅ claude\\-master · 1s_"
+
+
+def test_tool_count_links_to_the_log_message():
+    bot = FakeBot()
+    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+
+    async def scenario():
+        stream.tool("Bash: ls")
+        await stream.flush(force=True)
+        await stream.say(["answer"])
+        await stream.finish("✅ claude-master · 3s", tools=7)
+
+    run(scenario())
+    tail = bot.edits[-1][1]
+    assert "[7 tool calls](https://t.me/c/1234567890/1001)" in tail
+
+
+def test_tool_count_stays_plain_without_a_log():
+    bot = FakeBot(rich_error=True)
+    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+
+    async def scenario():
+        stream.tool("Bash: ls")
+        await stream.flush(force=True)
+        await stream.say(["answer"])
+        await stream.finish("✅ claude-master · 3s", tools=7)
+
+    run(scenario())
+    assert "https://t.me" not in bot.edits[-1][1]
 
 
 def test_render_block_splits_markup_and_attachments():

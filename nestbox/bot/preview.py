@@ -118,12 +118,22 @@ class ReplyStream:
             self._last_reply_id = message.message_id
             self._last_reply_text = chunk
 
-    async def finish(self, summary: str | None) -> None:
+    def _log_link(self, label: str) -> str:
+        """The tool call counter links to that log in the common channel."""
+        if self._log_id is None:
+            return escape_md(label)
+        internal = str(self._chat_id).removeprefix("-100")
+        return f"[{escape_md(label)}](https://t.me/c/{internal}/{self._log_id})"
+
+    async def finish(self, head: str | None, tools: int = 0) -> None:
         await self._stop_typing()
         await self.flush(force=True)
-        if not summary:
+        if not head:
             return
-        tail = f"_{escape_md(summary)}_"
+        tail = escape_md(head)
+        if tools:
+            tail = f"{tail} · {self._log_link(f'{tools} tool calls')}"
+        tail = f"_{tail}_"
         if self._last_reply_id is None:
             await self.say([tail])
             return
