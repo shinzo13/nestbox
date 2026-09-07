@@ -18,13 +18,11 @@ working; only the transport is ours.
 - `nestbox/bot/preview.py` — the single message a run lives in: placeholder, tool
   progress, then the answer itself.
 
-## Code names
+## Names
 
-Branch agents get code names picked by the orchestrator (stars: `vega`,
-`orion`, `lyra`, `mira`), never the project's own name — a topic called
-`web` next to the web repo reads as the repo itself. The project the
-agent works on stays in the agent's `description` and `cwd`, and the old name
-survives as an alias.
+A topic is named after what it is for (`master`, `web`, `api`) while
+the agent behind it is `claude-<that>`: `claude-master`, `claude-web`. Older
+names stay as aliases so the toml keeps resolving them.
 
 ## Commands
 
@@ -46,7 +44,7 @@ cp .env.example .env   # BOT_TOKEN, OWNER_ID
 uv run python -m nestbox
 ```
 
-The run summary (`✅ master · 1m19s · 15 tool calls`) is appended to the answer
+The run summary (`✅ claude-master · 1m19s · 15 tool calls`) is appended to the answer
 itself, so a reply is always a single message.
 
 The bot only answers `OWNER_ID`. Agents run with `bypassPermissions` by default;
@@ -54,9 +52,9 @@ override per agent in `config/agents.toml`.
 
 ## One message per run
 
-A run starts by posting `⏳ master is working…`, which lists the tools as they are
+A run starts by posting `⏳ claude-master is working…`, which lists the tools as they are
 called and is then edited into the answer itself — no extra messages, no
-deletions. The run summary (`✅ master · 1m19s · 15 tool calls`) is appended to
+deletions. The run summary (`✅ claude-master · 1m19s · 15 tool calls`) is appended to
 the tail of that message. Answers longer than one Telegram message spill into
 follow-up messages.
 

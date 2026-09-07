@@ -54,7 +54,7 @@ async def ensure_main_branch(
     await branches.add(
         Branch(
             thread_id=topic.message_thread_id,
-            agent="master",
+            agent="claude-master",
             title="master",
             cwd=str(Path.home()),
             mode="work",
