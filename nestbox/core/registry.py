@@ -17,7 +17,9 @@ JOURNAL_HINT = """Your journal for the last few days. You wrote it for yourself,
 
 {entries}
 
-Append to it yourself when a day turns out to matter: `uv run python -c` with nestbox.core.journal.Journal, or just append to the file. Write for yourself, not as a report."""
+Append to it yourself when a day turns out to matter: `uv run python -c` with nestbox.core.journal.Journal, or just append to the file. Write for yourself, not as a report.
+
+Two things about how to write. Give facts in checkable form, times with minutes, numbers, file and commit names: tomorrow's you will trust such a note and not go recheck it. And mark conclusions and opinions as yours and as yesterday's: they get taken along with the facts, and nobody notices they may have gone stale overnight."""
 
 FILE_HINT = """To hand a file to the person you are talking to, put [[send:/absolute/path]] on its own line in the answer: the bot strips the line and sends the file as an attachment.
 Files sent to you arrive as a path in the message text; read them from disk."""
