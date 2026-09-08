@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+# counters the engine reports cumulatively for the whole session
+SPENT_KEYS = ("cost_usd", "input_tokens", "output_tokens", "cache_read", "cache_write")
 
 
 @dataclass(slots=True)
@@ -13,6 +16,7 @@ class SessionRecord:
     agent: str
     updated_at: float
     title: str | None = None
+    spent: dict[str, float] = field(default_factory=dict)
 
 
 class SessionStore:
@@ -52,13 +56,35 @@ class SessionStore:
         async with self._lock:
             await self._ensure_loaded()
             existing = self._records.get(key)
+            fresh = existing is None or existing.session_id != session_id
             self._records[key] = SessionRecord(
                 session_id=session_id,
                 agent=agent,
                 updated_at=time.time(),
                 title=title or (existing.title if existing else None),
+                spent={} if fresh else dict(existing.spent),
             )
             self._flush()
+
+    async def take_spent(self, key: str, totals: dict[str, float]) -> dict[str, float]:
+        """The engine reports session totals, but a run should show its own cost: return the difference.
+
+        The session may have started over: then the total is below the stored one and is its own delta.
+        """
+        async with self._lock:
+            await self._ensure_loaded()
+            record = self._records.get(key)
+            previous = dict(record.spent) if record else {}
+            delta = {}
+            for name in SPENT_KEYS:
+                now = float(totals.get(name) or 0.0)
+                was = float(previous.get(name) or 0.0)
+                delta[name] = now - was if now >= was else now
+            if record is not None:
+                record.spent = {name: float(totals.get(name) or 0.0) for name in SPENT_KEYS}
+                record.updated_at = time.time()
+                self._flush()
+            return delta
 
     async def drop(self, key: str) -> bool:
         async with self._lock:

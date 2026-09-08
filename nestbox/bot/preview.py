@@ -98,14 +98,13 @@ class ReplyStream:
     def spent(self, usage: dict | None, cost: float | None) -> None:
         """What the run cost, in the log header next to the name and time."""
         usage = usage or {}
-        cached = (usage.get("cache_read_input_tokens") or 0) + (
-            usage.get("cache_creation_input_tokens") or 0
-        )
         parts = []
         for label, value in (
             ("in", usage.get("input_tokens")),
             ("out", usage.get("output_tokens")),
-            ("cache", cached or None),
+            # a cache read is ten times cheaper than a write, they do not add up to one number
+            ("cache↓", usage.get("cache_read_input_tokens")),
+            ("cache↑", usage.get("cache_creation_input_tokens")),
         ):
             if value:
                 parts.append(f"{label} {_short(value)}")

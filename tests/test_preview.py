@@ -171,11 +171,18 @@ def test_render_block_without_text(raw):
 def test_log_title_carries_the_spend():
     stream = ReplyStream(FakeBot(), -100, 23, "main")
     stream.spent(
-        {"input_tokens": 321000, "output_tokens": 2100, "cache_read_input_tokens": 300000},
+        {
+            "input_tokens": 321000,
+            "output_tokens": 2100,
+            "cache_read_input_tokens": 300000,
+            "cache_creation_input_tokens": 1200,
+        },
         0.42,
     )
     title = stream._rich().blocks[0].text
-    assert "in 321k" in title and "cache 300k" in title and "$0.42" in title
+    assert "in 321k" in title and "$0.42" in title
+    # reads and writes cost differently, so the header keeps them apart
+    assert "cache↓ 300k" in title and "cache↑ 1.2k" in title
 
 
 def test_log_title_stays_clean_without_usage():

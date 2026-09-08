@@ -199,9 +199,10 @@ class AgentRunner:
                     outcome.rate_limit = event
                 elif isinstance(event, Finished):
                     outcome.session_id = event.session_id or outcome.session_id
-                    outcome.cost_usd = event.cost_usd
                     outcome.duration_ms = event.duration_ms
-                    outcome.usage = event.usage or outcome.usage
+                    spent = await self._spent_of(key, event, persist)
+                    outcome.cost_usd = spent.pop("cost_usd", None)
+                    outcome.usage = spent or outcome.usage
                     if event.is_error:
                         outcome.error = event.text or "run failed"
                     elif event.text and event.text not in texts:
@@ -230,6 +231,25 @@ class AgentRunner:
             await stream.say([escape_md(f"⚠️ {outcome.error}")])
         await stream.finish(head, tools)
         return outcome
+
+    async def _spent_of(self, key: str, event: Finished, persist: bool) -> dict:
+        """The engine counts cumulatively per session; the header needs the cost of this run."""
+        usage = event.usage or {}
+        totals = {
+            "cost_usd": event.cost_usd or 0.0,
+            "input_tokens": usage.get("input_tokens") or 0,
+            "output_tokens": usage.get("output_tokens") or 0,
+            "cache_read": usage.get("cache_read_input_tokens") or 0,
+            "cache_write": usage.get("cache_creation_input_tokens") or 0,
+        }
+        delta = await self._store.take_spent(key, totals) if persist else totals
+        return {
+            "cost_usd": round(delta["cost_usd"], 4) or None,
+            "input_tokens": int(delta["input_tokens"]),
+            "output_tokens": int(delta["output_tokens"]),
+            "cache_read_input_tokens": int(delta["cache_read"]),
+            "cache_creation_input_tokens": int(delta["cache_write"]),
+        }
 
     @staticmethod
     def _pick_text(texts: list[str]) -> str | None:
