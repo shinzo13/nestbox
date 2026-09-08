@@ -166,3 +166,19 @@ def test_render_block_splits_markup_and_attachments():
 def test_render_block_without_text(raw):
     chunks, _ = render_block(raw)
     assert chunks == []
+
+
+def test_log_title_carries_the_spend():
+    stream = ReplyStream(FakeBot(), -100, 23, "main")
+    stream.spent(
+        {"input_tokens": 321000, "output_tokens": 2100, "cache_read_input_tokens": 300000},
+        0.42,
+    )
+    title = stream._rich().blocks[0].text
+    assert "in 321k" in title and "cache 300k" in title and "$0.42" in title
+
+
+def test_log_title_stays_clean_without_usage():
+    stream = ReplyStream(FakeBot(), -100, 23, "main")
+    stream.spent(None, None)
+    assert "—" not in stream._rich().blocks[0].text

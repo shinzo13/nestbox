@@ -50,6 +50,7 @@ class RunOutcome:
     tools: list[str] = field(default_factory=list)
     summary: str | None = None
     attachments: list[str] = field(default_factory=list)
+    usage: dict | None = None
 
 
 @dataclass(slots=True)
@@ -200,6 +201,7 @@ class AgentRunner:
                     outcome.session_id = event.session_id or outcome.session_id
                     outcome.cost_usd = event.cost_usd
                     outcome.duration_ms = event.duration_ms
+                    outcome.usage = event.usage or outcome.usage
                     if event.is_error:
                         outcome.error = event.text or "run failed"
                     elif event.text and event.text not in texts:
@@ -222,6 +224,7 @@ class AgentRunner:
         outcome.text = self._pick_text(texts)
         head = self._summary_line(spec.name, outcome)
         tools = len(outcome.tools)
+        stream.spent(outcome.usage, outcome.cost_usd)
         outcome.summary = f"{head} · {tools} tool calls" if tools else head
         if outcome.error:
             await stream.say([escape_md(f"⚠️ {outcome.error}")])
@@ -246,6 +249,8 @@ class AgentRunner:
         duration = human_duration(outcome.duration_ms)
         if duration:
             parts.append(duration)
+        if outcome.cost_usd:
+            parts.append(f"${outcome.cost_usd:.2f}")
         return " · ".join(parts)
 
 

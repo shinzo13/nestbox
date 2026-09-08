@@ -28,6 +28,12 @@ OWNER_TZ = ZoneInfo("UTC")
 log = logging.getLogger(__name__)
 
 
+def _short(tokens: int) -> str:
+    if tokens >= 1000:
+        return f"{tokens / 1000:.1f}k".replace(".0k", "k")
+    return str(tokens)
+
+
 class ReplyStream:
     """How a run looks in the chat.
 
@@ -50,6 +56,7 @@ class ReplyStream:
         self._last_reply_text = ""
         self._last_log_edit = 0.0
         self._log_failed = False
+        self._spent = ""
 
     async def start(self) -> None:
         await self._type()
@@ -88,11 +95,31 @@ class ReplyStream:
         self._entries.append(line)
         del self._entries[:-MAX_LOG_LINES]
 
+    def spent(self, usage: dict | None, cost: float | None) -> None:
+        """What the run cost, in the log header next to the name and time."""
+        usage = usage or {}
+        cached = (usage.get("cache_read_input_tokens") or 0) + (
+            usage.get("cache_creation_input_tokens") or 0
+        )
+        parts = []
+        for label, value in (
+            ("in", usage.get("input_tokens")),
+            ("out", usage.get("output_tokens")),
+            ("cache", cached or None),
+        ):
+            if value:
+                parts.append(f"{label} {_short(value)}")
+        if cost:
+            parts.append(f"${cost:.2f}")
+        self._spent = " · ".join(parts)
+
     def _rich(self) -> InputRichMessage:
         body = "\n\n".join(self._entries)
         if len(body) > LOG_BODY_LIMIT:
             body = "…\n\n" + body[-LOG_BODY_LIMIT:]
         title = f"{self._agent} {self._started.strftime('%H:%M')}"
+        if self._spent:
+            title = f"{title} · {self._spent}"
         blocks: list[object] = [InputRichBlockParagraph(text=title)]
         if body:
             blocks.append(

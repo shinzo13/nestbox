@@ -83,6 +83,7 @@ class Finished(Event):
     duration_ms: int | None
     num_turns: int | None
     text: str | None
+    usage: dict[str, Any] | None = None
     kind: ClassVar[str] = "finished"
 
 

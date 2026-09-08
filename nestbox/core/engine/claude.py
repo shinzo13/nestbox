@@ -165,6 +165,7 @@ class ClaudeEngine(Engine):
                     duration_ms=message.duration_ms,
                     num_turns=message.num_turns,
                     text=message.result,
+                    usage=message.usage,
                 )
             )
         return events
