@@ -42,7 +42,16 @@ class ReplyStream:
     separate message folded into details, updated as the work goes.
     """
 
-    def __init__(self, bot: Bot, chat_id: int, thread_id: int | None, agent: str) -> None:
+    def __init__(
+        self,
+        bot: Bot,
+        chat_id: int,
+        thread_id: int | None,
+        agent: str,
+        quiet: bool = False,
+    ) -> None:
+        # quiet run: nothing stays in the chat except an error message
+        self._quiet = quiet
         self._bot = bot
         self._chat_id = chat_id
         self._thread_id = thread_id
@@ -59,6 +68,8 @@ class ReplyStream:
         self._spent = ""
 
     async def start(self) -> None:
+        if self._quiet:
+            return
         await self._type()
         if self._typing is None:
             self._typing = asyncio.create_task(self._typing_loop())
@@ -132,7 +143,7 @@ class ReplyStream:
 
     async def flush(self, force: bool = False) -> None:
         """The tool call log lives in the common channel, not in the agent's branch."""
-        if self._log_failed or not self._entries:
+        if self._quiet or self._log_failed or not self._entries:
             return
         now = time.monotonic()
         if not force and now - self._last_log_edit < LOG_INTERVAL:
@@ -156,8 +167,10 @@ class ReplyStream:
             log.warning("tool call log failed: %s", exc)
             self._log_failed = True
 
-    async def say(self, chunks: list[str]) -> None:
+    async def say(self, chunks: list[str], force: bool = False) -> None:
         """Every finished chunk goes out as its own message without waiting for the end."""
+        if self._quiet and not force:
+            return
         for chunk in chunks:
             if not chunk.strip():
                 continue
@@ -178,6 +191,8 @@ class ReplyStream:
 
     async def finish(self, head: str | None, tools: int = 0) -> None:
         await self._stop_typing()
+        if self._quiet:
+            return
         await self.flush(force=True)
         if not head:
             return
@@ -203,7 +218,7 @@ class ReplyStream:
 
     async def fail(self, note: str) -> None:
         await self._stop_typing()
-        await self.say([escape_md(note)])
+        await self.say([escape_md(note)], force=True)
 
     async def _stop_typing(self) -> None:
         if self._typing is not None:

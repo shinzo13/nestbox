@@ -154,9 +154,10 @@ class AgentRunner:
         resume_session: str | None,
         fork: bool = False,
         persist: bool = True,
+        quiet: bool = False,
     ) -> RunOutcome:
         key = SessionStore.key(chat_id, thread_id)
-        stream = ReplyStream(bot, chat_id, thread_id, spec.name)
+        stream = ReplyStream(bot, chat_id, thread_id, spec.name, quiet=quiet)
         await stream.start()
 
         handle = None if fork else self._live.get(key)
@@ -228,7 +229,7 @@ class AgentRunner:
         stream.spent(outcome.usage, outcome.cost_usd)
         outcome.summary = f"{head} · {tools} tool calls" if tools else head
         if outcome.error:
-            await stream.say([escape_md(f"⚠️ {outcome.error}")])
+            await stream.say([escape_md(f"⚠️ {outcome.error}")], force=True)
         await stream.finish(head, tools)
         return outcome
 

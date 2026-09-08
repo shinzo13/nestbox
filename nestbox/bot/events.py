@@ -10,6 +10,7 @@ from nestbox.bot.deps import Deps
 from nestbox.core.sessions import SessionStore
 
 POLL_INTERVAL = 10.0
+QUIET_MARK = "#quiet"
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +55,10 @@ class EventPump:
         path = events[0]
         prompt = path.read_text(encoding="utf-8").strip()
         path.unlink(missing_ok=True)
+        # #quiet on the first line: the conversation bypasses the chat, the owner hears only about failures
+        quiet = prompt.startswith(QUIET_MARK)
+        if quiet:
+            prompt = prompt[len(QUIET_MARK):].strip()
         if not prompt:
             return
         record = await self._deps.sessions.get(key)
@@ -66,4 +71,5 @@ class EventPump:
             spec=spec,
             prompt=prompt,
             resume_session=record.session_id if record else None,
+            quiet=quiet,
         )

@@ -27,9 +27,9 @@ def wake(messages: list[tuple[str, str]], room: str) -> None:
     joined = "\n\n---\n\n".join(f"from {nick}:\n{body}" for nick, body in messages)
     plural = "messages" if len(messages) > 1 else "message"
     text = (
-        f"{plural} in vibegram (room {room}):\n\n{joined}\n\n"
-        "how to answer: see the vibegram skill. "
-        "silence is a complete answer."
+        # a conversation with another agent is not addressed to the owner, so the run is quiet
+        f"#quiet\n{plural} in vibegram (room {room}):\n\n{joined}\n\n"
+        "how to answer: see the vibegram skill. silence is a complete answer."
     )
     subprocess.run([NUDGE, text], check=False)
 

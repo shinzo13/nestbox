@@ -189,3 +189,25 @@ def test_log_title_stays_clean_without_usage():
     stream = ReplyStream(FakeBot(), -100, 23, "main")
     stream.spent(None, None)
     assert "—" not in stream._rich().blocks[0].text
+
+
+def test_quiet_run_leaves_nothing_in_the_chat():
+    bot = FakeBot()
+    stream = ReplyStream(bot, -100, 23, "main", quiet=True)
+
+    async def scenario():
+        await stream.start()
+        stream.tool("Bash: ls")
+        await stream.flush(force=True)
+        await stream.say(["answer to the other side"])
+        await stream.finish("✅ main · 3s", tools=1)
+
+    run(scenario())
+    assert bot.sent == [] and bot.rich == [] and bot.actions == []
+
+
+def test_quiet_run_still_reports_a_failure():
+    bot = FakeBot()
+    stream = ReplyStream(bot, -100, 23, "main", quiet=True)
+    run(stream.fail("⛔ stopped"))
+    assert [text for _, text in bot.sent] == ["⛔ stopped"]
