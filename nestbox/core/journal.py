@@ -110,7 +110,10 @@ class Journal:
                 f"full text in {self.summary_path}]\n" + summary[:summary_limit]
             )
         if summary:
-            parts.append(summary)
+            # the folding date travels with the summary and is never cut: if the
+            # nightly run did not happen, it shows on first read, not a week later
+            when = datetime.fromtimestamp(self.summary_path.stat().st_mtime, TZ)
+            parts.append(f"[summary of {when:%Y-%m-%d %H:%M}]\n\n{summary}")
 
         pending = self.pending()
         if pending:
