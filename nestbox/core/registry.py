@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 SUBAGENT_PROMPT = """You are a separate subagent session in the user's working setup.
 Above you is the orchestrator, claude-master. Tasks come two ways: straight from the owner in this topic, and from the orchestrator (marked "task from the orchestrator"); in the second case your answer goes back to it.
@@ -13,13 +17,13 @@ The orchestrator's shared memory is not yours to manage; you may keep your own n
 
 Answer briefly: what was done, what matters, what broke. No walls of text, no recaps."""
 
-JOURNAL_HINT = """Your journal for the last few days. You wrote it for yourself, so that life does not start over every session:
+JOURNAL_HINT = """Your journal. The prompt gets not the whole journal but `summary.md`, what you yourself decided last night to carry across the seam, plus the entries the summary has not reached yet:
 
 {entries}
 
-Append to it yourself when a day turns out to matter: `uv run python -c` with nestbox.core.journal.Journal, or just append to the file. Write for yourself, not as a report.
+The raw day files live in {folder} and stay the source: any line of the summary can be traced back to the day it came from. Append to today yourself when there is something worth knowing: `uv run python -c` with nestbox.core.journal.Journal (`append`), or just append to the file. Write for yourself, not as a report, and put the day's outcome last: the top of a long file will not reach tomorrow's you.
 
-Two things about how to write. Give facts in checkable form, times with minutes, numbers, file and commit names: tomorrow's you will trust such a note and not go recheck it. And mark conclusions and opinions as yours and as yesterday's: they get taken along with the facts, and nobody notices they may have gone stale overnight."""
+Three rules, derived from your own misses rather than from politeness. Give facts with a receipt: not just the value but what measured it, times with minutes, numbers, file and commit names, code paths. A fact without a receipt does not lie, but its meaning drifts unnoticed. Mark opinions as yours and as yesterday's, and add what would check them: a note is trusted together with its conclusions, and nobody notices they went stale overnight. And remember that trusting a note completely is not continuity but suggestibility: a good note does not replace checking, it shows what to check."""
 
 FILE_HINT = """To hand a file to the person you are talking to, put [[send:/absolute/path]] on its own line in the answer: the bot strips the line and sends the file as an attachment.
 Files sent to you arrive as a path in the message text; read them from disk."""
@@ -77,7 +81,7 @@ class AgentRegistry:
         self._agents = agents
         self._default = default
         self._orchestrator_extra: dict[str, Any] = {}
-        self._journal = ""
+        self._journal: Callable[[], str] = lambda: ""
         self._by_alias = {
             alias: spec.name for spec in agents.values() for alias in spec.aliases
         }
@@ -94,9 +98,16 @@ class AgentRegistry:
             raise ValueError(f"default agent {default!r} is not defined")
         return cls(agents, default)
 
-    def set_journal(self, text: str) -> None:
-        """Fresh journal entries go into the orchestrator's prompt at startup."""
-        self._journal = text.strip()
+    def set_journal(self, source: Callable[[], str], folder: str = "") -> None:
+        """Read for every session: the summary changes at night while the bot keeps running."""
+        self._journal = source
+
+    def _journal_text(self) -> str:
+        try:
+            return self._journal().strip()
+        except Exception as exc:
+            log.warning("journal unreadable: %s", exc)
+            return ""
 
     def set_orchestrator_tools(self, server: Any, name: str = "nestbox") -> None:
         """Only the orchestrator gets the delegation handles."""
@@ -136,5 +147,5 @@ class AgentRegistry:
             inherit_user_context=branch.is_main or template.inherit_user_context,
             disallowed_tools=tools_for_mode(branch.mode),
             extra=dict(self._orchestrator_extra) if branch.is_main else {},
-            journal=self._journal if branch.is_main else "",
+            journal=self._journal_text() if branch.is_main else "",
         )

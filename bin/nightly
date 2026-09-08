@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Nightly fold: the orchestrator rereads the journal days the summary has not
+# seen yet, rewrites summary.md (what it will wake up with) and asks for a clean
+# session. Meant to run from cron once a day.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+RESET="$ROOT/data/reset.main"
+
+facts=$(cd "$ROOT" && uv run python - <<'PY'
+from datetime import datetime
+from pathlib import Path
+
+from nestbox.config import Settings
+from nestbox.core.journal import TZ, Journal
+
+j = Journal(Settings().journal_dir.resolve())
+summary = j.read_summary()
+if summary:
+    when = datetime.fromtimestamp(j.summary_path.stat().st_mtime, TZ)
+    print(f"summary: {j.summary_path}, {len(summary)} chars, updated {when:%Y-%m-%d %H:%M %Z}")
+else:
+    print(f"no summary yet, the file is created first: {j.summary_path}")
+pending = j.pending()
+if pending:
+    print("not folded: " + ", ".join(f"{p.name} ({p.stat().st_size} bytes)" for p in pending))
+else:
+    print("not folded: nothing, every day is already in the summary")
+PY
+)
+
+"$ROOT/bin/nudge" "Nightly fold (a cron event). Do it yourself, do not delegate.
+
+$facts
+
+1. Read the pending day files in full, not the tail that reached you in the prompt.
+2. If the day brought nothing the summary does not already have, write nothing to the journal and go to step 4. An empty day is no reason to produce text.
+3. Otherwise append the day's outcome to the end of today's file (Journal.append): facts come with the value and what it was measured by; opinions come with a date and with what would check them.
+4. Rewrite the summary with Journal.write_summary(). It is the only thing you will wake up with, so:
+   - every line carries the date of the day it came from, so it can be traced back;
+   - a belief about yourself is added only with evidence (a case and a date) and removed only by a concrete refutation, not by mood;
+   - keep opinions apart from facts, each with how it would be checked;
+   - edit by delta, do not rewrite what did not change: compression on top of compression drifts;
+   - the budget is 8000 characters, anything over is cut from the end.
+   Leave the raw day files alone, they are the source.
+5. touch $RESET: the supervisor waits for the run to end and brings you back with a clean session and the new summary. The owner is asleep and needs no report: one short line in the branch saying you folded and are restarting."

@@ -4,6 +4,12 @@
 # direct alert to the owner instead.
 set -euo pipefail
 
+# cron has neither the session bus nor the user PATH, and without them
+# `systemctl --user` reports a live bot as dead, so the event would become an alert
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+export PATH="$HOME/.local/bin:$PATH"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 QUEUE="$ROOT/data/events"
 text="${*:-}"

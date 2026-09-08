@@ -111,7 +111,8 @@ async def main() -> None:
     )
     bot.session.middleware(MarkdownFallbackMiddleware())
     registry.set_orchestrator_tools(build_orchestrator_tools(lambda: deps, lambda: bot))
-    registry.set_journal(Journal(settings.journal_dir).recent())
+    journal = Journal(settings.journal_dir.resolve())
+    registry.set_journal(journal.recent, str(journal.folder))
     dispatcher = Dispatcher()
     dispatcher["deps"] = deps
     dispatcher.message.middleware(OwnerOnlyMiddleware(settings.owner_id))
@@ -123,7 +124,7 @@ async def main() -> None:
     runner.start_janitor()
     deps.icons = await load_icons(bot)
     await ensure_main_branch(bot, branches, chat_id, registry.default.name)
-    supervisor = MainSupervisor(deps, chat_id, settings.maintenance_lock)
+    supervisor = MainSupervisor(deps, chat_id, settings.maintenance_lock, settings.reset_flag)
     supervisor.start()
     EventPump(deps, bot, settings.data_dir / "events").start()
     await bot.set_my_commands(COMMANDS)

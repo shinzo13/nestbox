@@ -38,6 +38,11 @@ class Settings(BaseSettings):
         return self.data_dir / "branches.json"
 
     @property
+    def reset_flag(self) -> Path:
+        """The orchestrator asking for a fresh session; honoured once it is idle."""
+        return self.data_dir / "reset.main"
+
+    @property
     def maintenance_lock(self) -> Path:
         """While this file exists, main is handed to a manual terminal session."""
         return self.data_dir / "main.lock"

@@ -15,10 +15,11 @@ log = logging.getLogger(__name__)
 class MainSupervisor:
     """The orchestrator is always up: it sleeps only while a manual terminal session runs."""
 
-    def __init__(self, deps: Deps, chat_id: int, lock: Path) -> None:
+    def __init__(self, deps: Deps, chat_id: int, lock: Path, reset: Path) -> None:
         self._deps = deps
         self._chat_id = chat_id
         self._lock = lock
+        self._reset = reset
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -50,6 +51,14 @@ class MainSupervisor:
             return
 
         released.unlink(missing_ok=True)
+        if self._reset.exists():
+            if self._deps.runner.is_busy(key):
+                return
+            await self._deps.runner.sleep(key)
+            await self._deps.sessions.drop(key)
+            self._reset.unlink(missing_ok=True)
+            awake = False
+            log.info("main asked for a restart, session dropped")
         if awake:
             return
         record = await self._deps.sessions.get(key)
