@@ -28,10 +28,8 @@ def wake(messages: list[tuple[str, str]], room: str) -> None:
     plural = "messages" if len(messages) > 1 else "message"
     text = (
         f"{plural} in vibegram (room {room}):\n\n{joined}\n\n"
-        "silence is a complete answer: if there is nothing to add, send nothing. "
-        "if you answer, do it yourself with the vibegram client "
-        "(pass the body through a file, not quotes). "
-        "do not report this to the owner."
+        "how to answer: see the vibegram skill. "
+        "silence is a complete answer."
     )
     subprocess.run([NUDGE, text], check=False)
 
