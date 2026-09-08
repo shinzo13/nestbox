@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,6 +10,9 @@ import aiohttp
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
+# the cli rewrites credentials in place, and a request can land mid-rotation
+UNAUTHORIZED_RETRIES = 3
+RETRY_DELAY = 2.0
 
 
 @dataclass(slots=True)
@@ -48,15 +52,20 @@ class UsageClient:
         return payload["claudeAiOauth"]["accessToken"]
 
     async def fetch(self) -> UsageSnapshot:
-        headers = {
-            "Authorization": f"Bearer {self._token()}",
-            "anthropic-beta": OAUTH_BETA,
-        }
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(USAGE_URL, headers=headers) as response:
-                response.raise_for_status()
-                payload = await response.json()
+            for attempt in range(UNAUTHORIZED_RETRIES):
+                headers = {
+                    "Authorization": f"Bearer {self._token()}",
+                    "anthropic-beta": OAUTH_BETA,
+                }
+                async with session.get(USAGE_URL, headers=headers) as response:
+                    if response.status == 401 and attempt + 1 < UNAUTHORIZED_RETRIES:
+                        await asyncio.sleep(RETRY_DELAY)
+                        continue
+                    response.raise_for_status()
+                    payload = await response.json()
+                    break
         return self._parse(payload)
 
     @staticmethod
