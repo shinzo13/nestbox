@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import aiohttp
 
+log = logging.getLogger(__name__)
+
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
-# the cli rewrites credentials in place, and a request can land mid-rotation
-UNAUTHORIZED_RETRIES = 3
-RETRY_DELAY = 2.0
+# the cli rewrites credentials in place (401), and the endpoint itself is rate limited (429)
+RETRY_STATUSES = {401, 429, 500, 502, 503, 529}
+RETRIES = 4
+RETRY_DELAY = 1.5
+MAX_WAIT = 8.0
 
 
 @dataclass(slots=True)
@@ -43,6 +48,16 @@ def _parse_ts(value: str | None) -> datetime | None:
         return None
 
 
+def _retry_after(response: aiohttp.ClientResponse) -> float | None:
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 class UsageClient:
     def __init__(self, credentials_path: Path) -> None:
         self._credentials_path = credentials_path
@@ -54,14 +69,23 @@ class UsageClient:
     async def fetch(self) -> UsageSnapshot:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            for attempt in range(UNAUTHORIZED_RETRIES):
+            for attempt in range(RETRIES):
                 headers = {
                     "Authorization": f"Bearer {self._token()}",
                     "anthropic-beta": OAUTH_BETA,
                 }
                 async with session.get(USAGE_URL, headers=headers) as response:
-                    if response.status == 401 and attempt + 1 < UNAUTHORIZED_RETRIES:
-                        await asyncio.sleep(RETRY_DELAY)
+                    last = attempt + 1 >= RETRIES
+                    if response.status in RETRY_STATUSES and not last:
+                        delay = _retry_after(response) or RETRY_DELAY * 2**attempt
+                        if delay > MAX_WAIT:
+                            log.warning("usage %s, would wait %.0fs, not waiting", response.status, delay)
+                            response.raise_for_status()
+                        log.warning(
+                            "usage %s, attempt %s of %s, retrying in %.1fs",
+                            response.status, attempt + 1, RETRIES, delay,
+                        )
+                        await asyncio.sleep(delay)
                         continue
                     response.raise_for_status()
                     payload = await response.json()

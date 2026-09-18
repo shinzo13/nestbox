@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from aiogram import Router
@@ -11,6 +12,7 @@ from nestbox.bot.formatting import escape_md
 from nestbox.core.engine.base import Capability
 from nestbox.core.sessions import SessionStore
 
+log = logging.getLogger(__name__)
 router = Router(name="commands")
 
 TOPIC_NAME_LIMIT = 128
@@ -136,6 +138,7 @@ async def cmd_usage(message: Message, deps: Deps) -> None:
     try:
         snapshot = await deps.usage_snapshot(force=True)
     except Exception as exc:
+        log.warning("usage failed: %r", exc)
         await message.answer(escape_md(f"could not fetch usage: {exc}"))
         return
     lines = []
