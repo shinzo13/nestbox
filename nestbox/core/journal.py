@@ -94,6 +94,22 @@ class Journal:
                 log.warning("summary state unreadable (%s), treating all days as pending", exc)
         return [day for day in self.days() if folded.get(day.name) != day.stat().st_size]
 
+    def folded_scale(self) -> tuple[int, int]:
+        """How many days and characters the summary stands for, so loss is audible.
+
+        The summary is written by the model at night, not by code, and whatever it
+        drops leaves no trace: next morning the text looks complete. Scale is the
+        only cheap signal.
+        """
+        if not self.state_path.exists():
+            return 0, 0
+        try:
+            folded = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except ValueError:
+            return 0, 0
+        days = [self._folder / name for name in folded if (self._folder / name).exists()]
+        return len(days), sum(len(day.read_text(encoding="utf-8")) for day in days)
+
     def recent(self, summary_limit: int = SUMMARY_LIMIT, tail_limit: int = TAIL_LIMIT) -> str:
         """For the prompt: the whole summary plus the tail of pending days.
 
@@ -113,7 +129,9 @@ class Journal:
             # the folding date travels with the summary and is never cut: if the
             # nightly run did not happen, it shows on first read, not a week later
             when = datetime.fromtimestamp(self.summary_path.stat().st_mtime, TZ)
-            parts.append(f"[summary of {when:%Y-%m-%d %H:%M}]\n\n{summary}")
+            days, chars = self.folded_scale()
+            scale = f", {len(summary)} chars standing for {days} days and {chars} chars" if days else ""
+            parts.append(f"[summary of {when:%Y-%m-%d %H:%M}{scale}]\n\n{summary}")
 
         pending = self.pending()
         if pending:

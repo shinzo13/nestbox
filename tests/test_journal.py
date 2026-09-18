@@ -44,3 +44,12 @@ def test_cuts_are_announced_not_silent(tmp_path):
     text = journal.recent(summary_limit=50, tail_limit=50)
     assert "50 chars cut from the end" in text
     assert "50 chars cut from the start" in text
+
+
+def test_summary_carries_the_scale_of_what_it_replaced(tmp_path):
+    journal = make(tmp_path)
+    (journal.folder / "2026-09-08.md").write_text("d" * 300, encoding="utf-8")
+    (journal.folder / "2026-09-09.md").write_text("d" * 200, encoding="utf-8")
+    journal.write_summary("folded")
+    text = journal.recent()
+    assert "6 chars standing for 2 days and 500 chars" in text
