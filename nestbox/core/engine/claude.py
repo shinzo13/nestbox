@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 
 from claude_agent_sdk import (
@@ -105,6 +106,7 @@ class ClaudeEngine(Engine):
             skills=request.skills if request.skills is not None else "all",
             setting_sources=request.setting_sources or self._setting_sources,
             disallowed_tools=request.disallowed_tools,
+            cli_path=os.environ.get("CLAUDE_CLI_PATH") or None,
             include_partial_messages=False,
             **request.extra,
         )
