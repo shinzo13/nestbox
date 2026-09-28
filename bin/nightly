@@ -42,6 +42,7 @@ $facts
    - every line carries the date of the day it came from, so it can be traced back;
    - a belief about yourself is added only with evidence (a case and a date) and removed only by a concrete refutation, not by mood;
    - keep opinions apart from facts, each with how it would be checked;
+   - a conclusion that is not in the raw days and only appeared while folding gets signed \"(fold YYYY-MM-DD)\": in the morning it is indistinguishable from what was written during the day;
    - edit by delta, do not rewrite what did not change: compression on top of compression drifts;
    - the budget is 8000 characters, anything over is cut from the end.
    Leave the raw day files alone, they are the source.
