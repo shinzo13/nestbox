@@ -1,0 +1,21 @@
+# Copy to config/agents.toml. The default agent is the orchestrator: it lives in
+# its own pinned topic and gets the delegation tools. Every other entry is a
+# template the orchestrator can open a branch for.
+default = "main"
+
+[agents.main]
+description = "orchestrator, home dir, global memory"
+cwd = "/home/me"
+aliases = ["master", "core"]
+inherit_user_context = true
+
+[agents.web]
+description = "the web app"
+cwd = "/home/me/projects/web"
+aliases = ["site"]
+model = "opus"
+
+[agents.api]
+description = "the backend"
+cwd = "/home/me/projects/api"
+aliases = ["backend"]

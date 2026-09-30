@@ -19,11 +19,8 @@ class Settings(BaseSettings):
 
     usage_warn_threshold: int = 80
     credentials_path: Path = Field(default=Path.home() / ".claude" / ".credentials.json")
+    journal_dir: Path = Field(default=Path("./data/journal"))
 
-    @property
-    def journal_dir(self) -> Path:
-        """The orchestrator's journal lives next to its memory, not in the repo."""
-        return Path.home() / ".claude" / "journal"
 
     @property
     def sessions_path(self) -> Path:

@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 import urllib.request
+from pathlib import Path
 
 NUDGE = str(Path(__file__).resolve().parents[1] / "bin" / "nudge")
 RETRY_DELAY = 15.0

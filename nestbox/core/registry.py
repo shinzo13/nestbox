@@ -44,6 +44,7 @@ class AgentSpec:
     disallowed_tools: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
     journal: str = ""
+    journal_folder: str = ""
 
     @property
     def area(self) -> str:
@@ -82,6 +83,7 @@ class AgentRegistry:
         self._default = default
         self._orchestrator_extra: dict[str, Any] = {}
         self._journal: Callable[[], str] = lambda: ""
+        self._journal_folder = ""
         self._by_alias = {
             alias: spec.name for spec in agents.values() for alias in spec.aliases
         }
@@ -101,6 +103,7 @@ class AgentRegistry:
     def set_journal(self, source: Callable[[], str], folder: str = "") -> None:
         """Read for every session: the summary changes at night while the bot keeps running."""
         self._journal = source
+        self._journal_folder = folder
 
     def _journal_text(self) -> str:
         try:
@@ -148,4 +151,5 @@ class AgentRegistry:
             disallowed_tools=tools_for_mode(branch.mode),
             extra=dict(self._orchestrator_extra) if branch.is_main else {},
             journal=self._journal_text() if branch.is_main else "",
+            journal_folder=self._journal_folder if branch.is_main else "",
         )

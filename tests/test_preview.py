@@ -111,7 +111,7 @@ def test_summary_becomes_its_own_message_when_nothing_was_said():
 
 def test_tool_count_links_to_the_log_message():
     bot = FakeBot()
-    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+    stream = ReplyStream(bot, -1004346239071, 23, "claude-master")
 
     async def scenario():
         stream.tool("Bash: ls")
@@ -121,12 +121,12 @@ def test_tool_count_links_to_the_log_message():
 
     run(scenario())
     tail = bot.edits[-1][1]
-    assert "[7 tool calls](https://t.me/c/1234567890/1001)" in tail
+    assert "[7 tool calls](https://t.me/c/4346239071/1001)" in tail
 
 
 def test_tool_count_stays_plain_without_a_log():
     bot = FakeBot(rich_error=True)
-    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+    stream = ReplyStream(bot, -1004346239071, 23, "claude-master")
 
     async def scenario():
         stream.tool("Bash: ls")
@@ -145,7 +145,7 @@ def test_unchanged_log_is_not_treated_as_a_failure():
         raise TelegramBadRequest(method=None, message="message is not modified: ...")
 
     bot.edit_message_text = refuse
-    stream = ReplyStream(bot, -1001234567890, 23, "claude-master")
+    stream = ReplyStream(bot, -1004346239071, 23, "claude-master")
 
     async def scenario():
         stream.tool("Bash: ls")
@@ -169,7 +169,7 @@ def test_render_block_without_text(raw):
 
 
 def test_log_title_carries_the_spend():
-    stream = ReplyStream(FakeBot(), -100, 23, "main")
+    stream = ReplyStream(FakeBot(), -100, 23, "claude-kai")
     stream.spent(
         {
             "input_tokens": 321000,
@@ -186,21 +186,21 @@ def test_log_title_carries_the_spend():
 
 
 def test_log_title_stays_clean_without_usage():
-    stream = ReplyStream(FakeBot(), -100, 23, "main")
+    stream = ReplyStream(FakeBot(), -100, 23, "claude-kai")
     stream.spent(None, None)
     assert "—" not in stream._rich().blocks[0].text
 
 
 def test_quiet_run_leaves_nothing_in_the_chat():
     bot = FakeBot()
-    stream = ReplyStream(bot, -100, 23, "main", quiet=True)
+    stream = ReplyStream(bot, -100, 23, "claude-kai", quiet=True)
 
     async def scenario():
         await stream.start()
         stream.tool("Bash: ls")
         await stream.flush(force=True)
         await stream.say(["answer to the other side"])
-        await stream.finish("✅ main · 3s", tools=1)
+        await stream.finish("✅ claude-kai · 3s", tools=1)
 
     run(scenario())
     assert bot.sent == [] and bot.rich == [] and bot.actions == []
@@ -208,6 +208,6 @@ def test_quiet_run_leaves_nothing_in_the_chat():
 
 def test_quiet_run_still_reports_a_failure():
     bot = FakeBot()
-    stream = ReplyStream(bot, -100, 23, "main", quiet=True)
+    stream = ReplyStream(bot, -100, 23, "claude-kai", quiet=True)
     run(stream.fail("⛔ stopped"))
     assert [text for _, text in bot.sent] == ["⛔ stopped"]

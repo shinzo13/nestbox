@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -23,7 +24,7 @@ LOG_INTERVAL = 3.0
 MAX_LOG_LINES = 60
 THOUGHT_LIMIT = 400
 LOG_BODY_LIMIT = 3500
-OWNER_TZ = ZoneInfo("UTC")
+OWNER_TZ = ZoneInfo(os.environ.get("NESTBOX_TZ", "UTC"))
 
 log = logging.getLogger(__name__)
 

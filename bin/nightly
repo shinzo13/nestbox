@@ -11,7 +11,6 @@ RESET="$ROOT/data/reset.main"
 
 facts=$(cd "$ROOT" && uv run python - <<'PY'
 from datetime import datetime
-from pathlib import Path
 
 from nestbox.config import Settings
 from nestbox.core.journal import TZ, Journal
