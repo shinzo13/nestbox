@@ -13,9 +13,12 @@ from nestbox.core.engine.base import Capability
 from nestbox.core.registry import AgentRegistry
 from nestbox.core.sessions import SessionStore
 from nestbox.core.state import State
-from nestbox.core.usage import UsageClient, UsageSnapshot
+from nestbox.core.usage import RateLimited, UsageClient, UsageSnapshot
 
-USAGE_CACHE_TTL = 120.0
+# the usage endpoint shares its budget with the cli and goes quiet for ~5 minutes after 3-4 calls
+USAGE_CACHE_TTL = 600.0
+USAGE_FORCE_TTL = 60.0
+USAGE_BACKOFF = 300.0
 REDIRECT_COOLDOWN = 300.0
 
 
@@ -35,6 +38,7 @@ class Deps:
     maintenance_lock: Path = field(default_factory=lambda: Path("./data/main.lock"))
     _cache: tuple[float, UsageSnapshot] | None = field(default=None, init=False)
     _warned_at: float = field(default=0.0, init=False)
+    _usage_blocked_until: float = field(default=0.0, init=False)
     _redirected_at: float = field(default=0.0, init=False)
 
     async def redirect_to_main(self, message: Message) -> None:
@@ -48,10 +52,26 @@ class Deps:
         await message.answer(escape_md(f"the general chat belongs to nobody, write in {where}"))
 
     async def usage_snapshot(self, force: bool = False) -> UsageSnapshot:
+        """A fresh snapshot, or the last good one while the api is rate limited.
+
+        A stale snapshot shows itself through fetched_at, so the caller decides
+        how to say the numbers are not current.
+        """
         now = time.monotonic()
-        if not force and self._cache and now - self._cache[0] < USAGE_CACHE_TTL:
+        ttl = USAGE_FORCE_TTL if force else USAGE_CACHE_TTL
+        if self._cache and now - self._cache[0] < ttl:
             return self._cache[1]
-        snapshot = await self.usage.fetch()
+        if now < self._usage_blocked_until:
+            if self._cache:
+                return self._cache[1]
+            raise RateLimited()
+        try:
+            snapshot = await self.usage.fetch()
+        except RateLimited:
+            self._usage_blocked_until = now + USAGE_BACKOFF
+            if self._cache:
+                return self._cache[1]
+            raise
         self._cache = (now, snapshot)
         return snapshot
 

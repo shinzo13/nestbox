@@ -24,3 +24,37 @@ def test_ignores_null_blocks():
 def test_bad_timestamp_is_none():
     snapshot = UsageClient._parse({"five_hour": {"utilization": 1.0, "resets_at": "nope"}})
     assert snapshot.windows[0].resets_at is None
+
+
+async def test_rate_limit_serves_the_last_good_snapshot():
+    import time
+
+    import pytest
+
+    from nestbox.bot.deps import Deps
+    from nestbox.core.usage import RateLimited, UsageSnapshot
+
+    class Client:
+        def __init__(self):
+            self.calls = 0
+            self.limited = False
+
+        async def fetch(self):
+            self.calls += 1
+            if self.limited:
+                raise RateLimited()
+            return UsageSnapshot(windows=[], extra_credits_used=None, currency=None)
+
+    client = Client()
+    deps = Deps(None, None, None, None, 1, None, client, 80, frozenset())
+    first = await deps.usage_snapshot()
+    deps._cache = (time.monotonic() - 3600, first)
+    client.limited = True
+    assert await deps.usage_snapshot(force=True) is first
+    calls = client.calls
+    assert await deps.usage_snapshot(force=True) is first
+    assert client.calls == calls
+
+    deps._cache = None
+    with pytest.raises(RateLimited):
+        await deps.usage_snapshot(force=True)

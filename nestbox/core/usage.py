@@ -13,8 +13,9 @@ log = logging.getLogger(__name__)
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
-# the cli rewrites credentials in place (401), and the endpoint itself is rate limited (429)
-RETRY_STATUSES = {401, 429, 500, 502, 503, 529}
+# the cli rewrites credentials in place (401). 429 is not retried: the endpoint
+# allows three or four calls, then refuses for about five minutes, and retries extend it
+RETRY_STATUSES = {401, 500, 502, 503, 529}
 RETRIES = 4
 RETRY_DELAY = 1.5
 MAX_WAIT = 8.0
@@ -27,11 +28,16 @@ class Window:
     resets_at: datetime | None
 
 
+class RateLimited(Exception):
+    pass
+
+
 @dataclass(slots=True)
 class UsageSnapshot:
     windows: list[Window]
     extra_credits_used: float | None
     currency: str | None
+    fetched_at: datetime | None = None
 
     @property
     def peak(self) -> float:
@@ -75,6 +81,8 @@ class UsageClient:
                     "anthropic-beta": OAUTH_BETA,
                 }
                 async with session.get(USAGE_URL, headers=headers) as response:
+                    if response.status == 429:
+                        raise RateLimited()
                     last = attempt + 1 >= RETRIES
                     if response.status in RETRY_STATUSES and not last:
                         delay = _retry_after(response) or RETRY_DELAY * 2**attempt
@@ -90,7 +98,9 @@ class UsageClient:
                     response.raise_for_status()
                     payload = await response.json()
                     break
-        return self._parse(payload)
+        snapshot = self._parse(payload)
+        snapshot.fetched_at = datetime.now(UTC)
+        return snapshot
 
     @staticmethod
     def _parse(payload: dict) -> UsageSnapshot:

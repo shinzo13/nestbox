@@ -11,6 +11,7 @@ from nestbox.bot.deps import Deps
 from nestbox.bot.formatting import escape_md
 from nestbox.core.engine.base import Capability
 from nestbox.core.sessions import SessionStore
+from nestbox.core.usage import RateLimited
 
 log = logging.getLogger(__name__)
 router = Router(name="commands")
@@ -137,9 +138,13 @@ async def cmd_sessions(message: Message, deps: Deps) -> None:
 async def cmd_usage(message: Message, deps: Deps) -> None:
     try:
         snapshot = await deps.usage_snapshot(force=True)
+    except RateLimited:
+        await message.answer(escape_md("the usage api answers 429, try again in 5 minutes"))
+        return
     except Exception as exc:
-        log.warning("usage failed: %r", exc)
-        await message.answer(escape_md(f"could not fetch usage: {exc}"))
+        # the repr of ClientResponseError carries the request headers, oauth token included
+        log.warning("usage failed: %s", type(exc).__name__)
+        await message.answer(escape_md(f"could not fetch usage: {type(exc).__name__}"))
         return
     lines = []
     for window in snapshot.windows:
@@ -148,6 +153,8 @@ async def cmd_usage(message: Message, deps: Deps) -> None:
         lines.append(f"{window.label}: {percent} {reset}".strip())
     if snapshot.extra_credits_used:
         lines.append(f"extra: {snapshot.extra_credits_used:.2f} {snapshot.currency or ''}".strip())
+    if snapshot.fetched_at and (datetime.now(UTC) - snapshot.fetched_at).total_seconds() > 90:
+        lines.append(f"(as of {snapshot.fetched_at:%H:%M} UTC, the usage api is rate limiting)")
     await message.answer(escape_md("\n".join(lines)))
 
 
