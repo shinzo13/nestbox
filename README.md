@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner/github-banner-2560x1280.png" alt="nestbox" width="100%"></p>
+
 # nestbox
 
 A home for Claude Code agents in Telegram.
@@ -145,6 +147,7 @@ nestbox/
   vibewatch.py    vibegram room listener
 bin/              nudge, nightly, say, main-shell
 config/           agents.example.toml
+assets/           logo, avatars, banner
 ```
 
 `core/engine/base.py` is a neutral contract (a `RunRequest` in, a stream of
